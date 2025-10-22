@@ -1,0 +1,36 @@
+# 数据库文件
+*.sqlite3
+*.db
+
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境目录（非常重要！）
+venv/
+env/
+.venv/
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 环境变量文件（包含敏感信息！）
+.env
+.env.local
+
+# 静态文件收集目录（通常由 `collectstatic` 生成）
+staticfiles/
+
+# 媒体文件（用户上传的文件）
+media/
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
