@@ -2,6 +2,10 @@
 *.sqlite3
 *.db
 
+volumes/
+chrome_db/
+models/
+
 # Python 编译文件
 __pycache__/
 *.py[cod]

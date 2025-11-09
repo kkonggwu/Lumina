@@ -1,14 +1,17 @@
+from os import access
+
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
 from rest_framework.views import APIView
 from rest_framework import status, serializers
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .user_service import UserService
 from .serializers import (
     UserRegisterSerializer,
     UserLoginSerializer,
     ChangePasswordSerializer,
-    UserSerializer
+    UserSerializer, UserInfoSerializer
 )
 
 
@@ -52,7 +55,7 @@ class UserRegisterView(APIView):
     def post(self, request):
         """用户注册接口"""
         try:
-            # 📌 步骤1: 使用 UserRegisterSerializer 验证数据
+            # 步骤1: 使用 UserRegisterSerializer 验证数据
             serializer = UserRegisterSerializer(data=request.data)
 
             # 验证失败会自动抛出异常并返回400错误
@@ -63,14 +66,14 @@ class UserRegisterView(APIView):
                     "errors": serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # 📌 步骤2: 获取验证后的数据（字典格式）
+            # 步骤2: 获取验证后的数据（字典格式）
             validated_data = serializer.validated_data
 
-            # 📌 步骤3: 调用服务层进行注册
-            # 💡 使用字典解包，更简洁
+            # 步骤3: 调用服务层进行注册
+            # 使用字典解包，更简洁
             success, message, user = UserService.register(**validated_data)
 
-            # 📌 步骤4: 使用 UserSerializer 格式化返回数据
+            # 步骤4: 使用 UserSerializer 格式化返回数据
             if success and user:
                 # UserSerializer 会自动处理：
                 # - 密码不返回（write_only=True）
@@ -124,7 +127,9 @@ class UserLoginView(APIView):
                     fields={
                         "success": serializers.BooleanField(),
                         "message": serializers.CharField(),
-                        "data": UserSerializer()
+                        "data": UserSerializer(),
+                        "access": serializers.CharField(),
+                        "refresh": serializers.CharField(),
                     }
                 )
             ),
@@ -165,11 +170,15 @@ class UserLoginView(APIView):
             # 使用 UserSerializer 格式化返回数据
             if success and user:
                 user_data = UserSerializer(user).data
+                refresh = RefreshToken.for_user(user)
+                access_token = refresh.access_token
 
                 return JsonResponse({
                     "success": True,
                     "message": message,
-                    "data": user_data
+                    "data": user_data,
+                    "access": str(access_token),
+                    "refresh": str(refresh),
                 })
             else:
                 return JsonResponse({
@@ -199,22 +208,7 @@ class UserInfoView(APIView):
         - 至少需要提供其中一个参数
         """,
         tags=["用户管理"],
-        parameters=[
-            {
-                "name": "user_id",
-                "in": "query",
-                "description": "用户ID",
-                "required": False,
-                "schema": {"type": "integer"}
-            },
-            {
-                "name": "username",
-                "in": "query",
-                "description": "用户名",
-                "required": False,
-                "schema": {"type": "string"}
-            }
-        ],
+        request =UserInfoSerializer,
         responses={
             200: OpenApiResponse(
                 description="获取成功",
@@ -254,7 +248,7 @@ class UserInfoView(APIView):
             elif username:
                 user = UserService.get_user_by_username(username)
 
-            # 📌 使用 UserSerializer 格式化返回数据
+            # 使用 UserSerializer 格式化返回数据
             if user:
                 # UserSerializer 会自动处理所有字段的格式化
                 # 包括：时间格式、user_type_name、密码隐藏等
@@ -292,7 +286,7 @@ class ChangePasswordView(APIView):
         - 修改成功后建议重新登录
         """,
         tags=["用户管理"],
-        request=ChangePasswordSerializer,  # 📌 使用你定义的修改密码DTO
+        request=ChangePasswordSerializer,
         responses={
             200: OpenApiResponse(
                 description="修改成功",
@@ -310,9 +304,13 @@ class ChangePasswordView(APIView):
         operation_id="change_password"
     )
     def post(self, request):
-        """修改密码接口"""
+        """
+        修改密码接口
+        :param request:
+        :return:
+        """
         try:
-            # 📌 使用 ChangePasswordSerializer 验证数据
+            # 使用 ChangePasswordSerializer 验证数据
             serializer = ChangePasswordSerializer(data=request.data)
 
             if not serializer.is_valid():
@@ -324,13 +322,15 @@ class ChangePasswordView(APIView):
 
             # 获取验证后的数据
             validated_data = serializer.validated_data
-            user_id = validated_data.get("user_id")
+            username = validated_data.get("username")
             old_password = validated_data.get("old_password")
             new_password = validated_data.get("new_password")
+            user_id  = request.user.get("user_id")
 
             # 调用服务层修改密码
             success, message = UserService.change_password(
                 user_id=user_id,
+                username=username,
                 old_password=old_password,
                 new_password=new_password
             )

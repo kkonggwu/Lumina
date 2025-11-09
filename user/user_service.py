@@ -1,9 +1,6 @@
 from django.db import IntegrityError
 from django.core.exceptions import ObjectDoesNotExist
-from datetime import datetime
-
-from .models import User
-
+from .models import UserModel
 
 class UserService:
     """
@@ -11,7 +8,7 @@ class UserService:
     """
 
     @staticmethod
-    def register(username, password, nickname, user_type=User.STUDENT, email=None, phone=None):
+    def register(username, password, nickname, user_type=UserModel.STUDENT, email=None, phone=None):
         """
         用户注册
         
@@ -28,21 +25,22 @@ class UserService:
         """
         try:
             # 检查用户类型是否合法
-            if user_type not in [User.ADMIN, User.TEACHER, User.STUDENT]:
+            if user_type not in [UserModel.ADMIN, UserModel.TEACHER, UserModel.STUDENT]:
                 return False, "无效的用户类型", None
 
             # 创建用户对象
-            user = User(
+            user = UserModel(
                 username=username,
+                password=password,
                 nickname=nickname,
                 user_type=user_type,
                 email=email,
                 phone=phone,
-                status=User.ENABLED,
-                is_deleted=User.NOT_DELETED
+                status=UserModel.ENABLED,
+                is_deleted=UserModel.NOT_DELETED
             )
             # 设置密码（自动加密）
-            user.set_password(password)
+            # user.set_password(password)
             # 保存用户
             user.save()
             
@@ -67,10 +65,10 @@ class UserService:
         """
         try:
             # 查询用户
-            user = User.objects.get(username=username, is_deleted=User.NOT_DELETED)
+            user = UserModel.objects.get(username=username, is_deleted=UserModel.NOT_DELETED)
             
             # 检查用户状态
-            if user.status == User.DISABLED:
+            if user.status == UserModel.DISABLED:
                 return False, "用户已被禁用", None
             
             # 验证密码
@@ -98,7 +96,7 @@ class UserService:
             User: 用户对象，如果不存在返回None
         """
         try:
-            return User.objects.get(id=user_id, is_deleted=User.NOT_DELETED)
+            return UserModel.objects.get(id=user_id, is_deleted=UserModel.NOT_DELETED)
         except ObjectDoesNotExist:
             return None
 
@@ -114,7 +112,7 @@ class UserService:
             User: 用户对象，如果不存在返回None
         """
         try:
-            return User.objects.get(username=username, is_deleted=User.NOT_DELETED)
+            return UserModel.objects.get(username=username, is_deleted=UserModel.NOT_DELETED)
         except ObjectDoesNotExist:
             return None
 
@@ -131,7 +129,7 @@ class UserService:
             tuple: (是否成功, 消息)
         """
         try:
-            user = User.objects.get(id=user_id, is_deleted=User.NOT_DELETED)
+            user = UserModel.objects.get(id=user_id, is_deleted=UserModel.NOT_DELETED)
             
             # 更新用户信息
             for key, value in kwargs.items():
@@ -149,12 +147,13 @@ class UserService:
             return False, f"更新失败: {str(e)}"
 
     @staticmethod
-    def change_password(user_id, old_password, new_password):
+    def change_password(user_id,username, old_password, new_password):
         """
         修改密码
         
         Args:
             user_id: 用户ID
+            username: 用户名
             old_password: 原密码
             new_password: 新密码
         
@@ -162,7 +161,7 @@ class UserService:
             tuple: (是否成功, 消息)
         """
         try:
-            user = User.objects.get(id=user_id, is_deleted=User.NOT_DELETED)
+            user = UserModel.objects.get(id=username, is_deleted=UserModel.NOT_DELETED)
             
             # 验证原密码
             if not user.check_password(old_password):
@@ -189,7 +188,7 @@ class UserService:
         Returns:
             tuple: (是否成功, 消息)
         """
-        return UserService.update_user(user_id, status=User.DISABLED)
+        return UserService.update_user(user_id, status=UserModel.DISABLED)
 
     @staticmethod
     def enable_user(user_id):
@@ -202,7 +201,7 @@ class UserService:
         Returns:
             tuple: (是否成功, 消息)
         """
-        return UserService.update_user(user_id, status=User.ENABLED)
+        return UserService.update_user(user_id, status=UserModel.ENABLED)
 
     @staticmethod
     def delete_user(user_id):
@@ -215,4 +214,4 @@ class UserService:
         Returns:
             tuple: (是否成功, 消息)
         """
-        return UserService.update_user(user_id, is_deleted=User.DELETED)
+        return UserService.update_user(user_id, is_deleted=UserModel.DELETED)

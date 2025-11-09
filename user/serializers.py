@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import UserModel
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -16,7 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     
     class Meta:
-        model = User
+        model = UserModel
         fields = [
             'id', 'username', 'nickname', 'user_type', 'user_type_name',
             'email', 'phone', 'avatar', 'status', 'last_login_time',
@@ -28,7 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
         """
         获取用户类型的中文名称
         """
-        return dict(User.USER_TYPE_CHOICES).get(obj.user_type)
+        return dict(UserModel.USER_TYPE_CHOICES).get(obj.user_type)
     
     def validate_username(self, value):
         """
@@ -39,11 +39,11 @@ class UserSerializer(serializers.ModelSerializer):
         
         # 如果是更新操作，排除当前用户
         if self.instance:
-            if User.objects.filter(username=value).exclude(id=self.instance.id).exists():
+            if UserModel.objects.filter(username=value).exclude(id=self.instance.id).exists():
                 raise serializers.ValidationError("用户名已存在")
         else:
             # 注册操作，检查用户名是否已存在
-            if User.objects.filter(username=value).exists():
+            if UserModel.objects.filter(username=value).exists():
                 raise serializers.ValidationError("用户名已存在")
         
         return value
@@ -60,7 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
         """
         验证用户类型
         """
-        valid_types = [User.ADMIN, User.TEACHER, User.STUDENT]
+        valid_types = [UserModel.ADMIN, UserModel.TEACHER, UserModel.STUDENT]
         if value not in valid_types:
             raise serializers.ValidationError("无效的用户类型")
         return value
@@ -70,7 +70,7 @@ class UserSerializer(serializers.ModelSerializer):
         创建用户时处理密码加密
         """
         password = validated_data.pop('password', None)
-        user = User(**validated_data)
+        user = UserModel(**validated_data)
         if password:
             user.set_password(password)
         user.save()
@@ -112,7 +112,7 @@ class UserRegisterSerializer(serializers.Serializer):
         help_text="昵称，长度不超过50个字符"
     )
     user_type = serializers.IntegerField(
-        default=User.STUDENT,
+        default=UserModel.STUDENT,
         help_text="用户类型：0=管理员，1=教师，2=学生（默认）"
     )
     email = serializers.EmailField(
@@ -131,7 +131,7 @@ class UserRegisterSerializer(serializers.Serializer):
         """
         验证用户名是否已存在
         """
-        if User.objects.filter(username=value).exists():
+        if UserModel.objects.filter(username=value).exists():
             raise serializers.ValidationError("用户名已存在")
         return value
     
@@ -139,7 +139,7 @@ class UserRegisterSerializer(serializers.Serializer):
         """
         验证用户类型是否有效
         """
-        valid_types = [User.ADMIN, User.TEACHER, User.STUDENT]
+        valid_types = [UserModel.ADMIN, UserModel.TEACHER, UserModel.STUDENT]
         if value not in valid_types:
             raise serializers.ValidationError("无效的用户类型")
         return value
@@ -159,12 +159,27 @@ class UserLoginSerializer(serializers.Serializer):
     )
 
 
+class UserInfoSerializer(serializers.Serializer):
+    """
+    获取用户登录信息
+    """
+    user_id = serializers.IntegerField(
+        help_text="用户ID"
+    )
+
+    username = serializers.CharField(
+        max_length=50,
+        help_text="用户名，长度2-50个字符"
+    )
+
+
 class ChangePasswordSerializer(serializers.Serializer):
     """
     修改密码序列化器
     """
-    user_id = serializers.IntegerField(
-        help_text="用户ID"
+    username = serializers.CharField(
+        max_length=50,
+        help_text="用户名，长度2-50个字符"
     )
     old_password = serializers.CharField(
         help_text="当前密码"

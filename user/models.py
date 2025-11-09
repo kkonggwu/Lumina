@@ -3,7 +3,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from datetime import datetime
 
 
-class User(models.Model):
+class UserModel(models.Model):
     """
     用户模型，映射数据库中的user表
     """

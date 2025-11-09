@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: DjangoProject API 文档
+  version: 1.0.0
+  description: "\n    # DjangoProject API 接口文档\n    \n    这是一个基于Django和Django REST\
+    \ Framework构建的Web API项目。\n    \n    ## 功能模块\n    \n    - **用户管理**: 用户注册、登录、信息查询、密码修改\n\
+    \    - **健康检查**: 服务状态监控和系统信息查询\n    \n    ## 认证方式\n    \n    目前使用简单的Token认证，后续可扩展为JWT认证。\n\
+    \    \n    ## 响应格式\n    \n    所有API响应都遵循统一的JSON格式：\n    ```json\n    {\n     \
+    \   \"code\": 200,\n        \"message\": \"success\",\n        \"data\": {}\n\
+    \    }\n    ```\n    "
+paths:
+  /health/:
+    get:
+      operationId: health_retrieve
+      description: |-
+        健康检查接口
+
+        检查以下组件状态：
+        - 数据库连接
+        - 缓存系统
+        - 服务运行时间
+        - 内存使用情况
+      tags:
+      - health
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/user/register/:
+    post:
+      operationId: user_register_create
+      description: 用户注册接口
+      tags:
+      - user
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/user/login/:
+    post:
+      operationId: user_login_create
+      description: 用户登录接口
+      tags:
+      - user
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/user/info/:
+    get:
+      operationId: user_info_retrieve
+      description: 获取用户信息接口
+      tags:
+      - user
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/user/change-password/:
+    post:
+      operationId: user_change_password_create
+      description: 修改密码接口
+      tags:
+      - user
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+tags:
+- name: 用户管理
+  description: 用户注册、登录、信息管理相关接口
+- name: 系统监控
+  description: 健康检查、系统状态监控接口
