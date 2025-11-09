@@ -43,7 +43,7 @@ def health_check(request: HttpRequest):
     health_status = {
         "status": "ok",
         "timestamp": int(time.time()),
-        "service": "DjangoProject",
+        "service": "Lumina",
         "version": "1.0.0",
         "checks": {}
     }

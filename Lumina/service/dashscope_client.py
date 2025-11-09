@@ -4,7 +4,7 @@ import langchain
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import SecretStr
 
-from DjangoProject.config.config import CACHE_PATH
+from Lumina.config.config import CACHE_PATH
 
 # 启用全局缓存
 langchain.llm_cache = SQLiteCache(database_path=CACHE_PATH + "/langchain.db")

@@ -1,16 +1,16 @@
-# milvue_manager.py
-import uuid
 import time
-from typing import List, Dict, Any, Optional
+import uuid
+from typing import List
+
+from langchain_community.vectorstores import Milvus
+from sentence_transformers import SentenceTransformer
 from pymilvus import (
     connections,
     FieldSchema, CollectionSchema, DataType,
     Collection, utility
 )
-from sentence_transformers import SentenceTransformer
 
-
-class ProductionReadyMilvusManager:
+class MilvusManager:
     def __init__(
             self,
             host: str = "localhost",
@@ -20,8 +20,13 @@ class ProductionReadyMilvusManager:
             dimension: int = 384
     ):
         """
-        生产就绪的Milvus管理器
+        :param host:
+        :param port:
+        :param collection_name: 数据库表名（根据不同知识库进行区分）
+        :param embedding_model: 嵌入模型
+        :param dimension: 嵌入维度
         """
+
         self.host = host
         self.port = port
         self.collection_name = collection_name
@@ -47,19 +52,18 @@ class ProductionReadyMilvusManager:
                 host=self.host,
                 port=self.port
             )
-            print(f"✅ 成功连接到 Milvus: {self.host}:{self.port}")
+            print(f"Connected to {self.host}:{self.port} successfully.")
         except Exception as e:
-            print(f"❌ 连接Milvus失败: {e}")
-            raise
+            print(f"Failed to connect to Milvus: {e}")
 
     def _setup_collection(self) -> Collection:
         """创建或获取集合"""
-        # 检查集合是否存在
         if utility.has_collection(self.collection_name):
+            # 使用现有的 collection
             collection = Collection(self.collection_name)
-            print(f"✅ 使用现有集合: {self.collection_name}")
+            print(f"Collection {self.collection_name} already exists.")
         else:
-            # 定义字段
+            # 创建新的 collection
             fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=100),
                 FieldSchema(name="document", dtype=DataType.VARCHAR, max_length=65535),
@@ -67,10 +71,10 @@ class ProductionReadyMilvusManager:
                 FieldSchema(name="metadata", dtype=DataType.JSON)
             ]
 
-            # 创建schema
-            schema = CollectionSchema(fields, description="文档存储集合")
+            # 创建 schema
+            schema = CollectionSchema(fields=fields)
 
-            # 创建集合
+            # 创建 collection
             collection = Collection(
                 name=self.collection_name,
                 schema=schema,
@@ -79,9 +83,9 @@ class ProductionReadyMilvusManager:
 
             # 创建索引
             index_params = {
-                "metric_type": "L2",
-                "index_type": "IVF_FLAT",
-                "params": {"nlist": 128}
+                "metric_type": "L2", # L2(欧几里得距离)
+                "index_type": "IVF_FLAT", #
+                "params": {"nlist": 128} # 将整个向量空间划分为128个聚类单元
             }
 
             collection.create_index(
@@ -89,7 +93,7 @@ class ProductionReadyMilvusManager:
                 index_params=index_params
             )
 
-            print(f"✅ 创建新集合: {self.collection_name}")
+            print(f"✅ Created collection {self.collection_name} successfully.")
 
         return collection
 
@@ -118,7 +122,7 @@ class ProductionReadyMilvusManager:
 
         except Exception as e:
             print(f"❌ 加载集合失败: {e}")
-            # 不要raise，继续执行，可能在搜索时自动加载
+
 
     def _is_collection_loaded(self) -> bool:
         """检查集合是否已加载"""
@@ -129,23 +133,28 @@ class ProductionReadyMilvusManager:
         except Exception:
             return False
 
+
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         """生成文本嵌入向量"""
         embeddings = self.embedding_model.encode(texts)
         return embeddings.tolist()
 
+
     def insert_documents(
             self,
             documents: List[str],
-            metadatas: Optional[List[Dict]] = None
+            metadatas: List[str]
     ) -> List[str]:
         """
-        插入文档到Milvus
+        插入文档到 Milvus
+        :param documents: 文档列表
+        :param metadatas: 文档元信息
+        :return: 返回文档 id
         """
         if not documents:
-            raise ValueError("文档列表不能为空")
+            raise ValueError("文档不能列表为空")
 
-        # 确保集合已加载
+        # collection 加载之后才继续运行
         if not self._is_collection_loaded():
             self._load_collection()
 
@@ -154,7 +163,7 @@ class ProductionReadyMilvusManager:
 
         # 准备数据
         ids = [str(uuid.uuid4()) for _ in range(len(documents))]
-
+        # 元数据为空则设置默认值
         if metadatas is None:
             metadatas = [{} for _ in documents]
 
@@ -167,11 +176,9 @@ class ProductionReadyMilvusManager:
         ]
 
         # 插入数据
-        insert_result = self.collection.insert(entities)
-
-        # 刷新数据使可搜索
+        result = self.collection.insert(entities)
+        # 刷新数据，确保可以被检索到
         self.collection.flush()
-
         print(f"✅ 成功插入 {len(documents)} 个文档")
         return ids
 
@@ -183,15 +190,17 @@ class ProductionReadyMilvusManager:
     ) -> List[Dict[str, Any]]:
         """
         搜索相似文档
+        :param query: 查询语句
+        :param limit: 查询文档数
+        :param filter_condition:
+        :return:
         """
         # 确保集合已加载
         if not self._is_collection_loaded():
             print("🔄 搜索前自动加载集合...")
             self._load_collection()
 
-        # 生成查询向量
         query_embedding = self.generate_embeddings([query])[0]
-
         # 定义搜索参数
         search_params = {
             "metric_type": "L2",
@@ -222,6 +231,7 @@ class ProductionReadyMilvusManager:
 
         return formatted_results
 
+
     def query_documents(
             self,
             filter_condition: str,
@@ -229,6 +239,7 @@ class ProductionReadyMilvusManager:
             output_fields: List[str] = None
     ):
         """查询文档（基于条件过滤）"""
+        # TODO 看一下
         if output_fields is None:
             output_fields = ["id", "document", "metadata"]
 
@@ -274,3 +285,13 @@ class ProductionReadyMilvusManager:
 
         connections.disconnect("default")
         print("✅ Milvus连接已关闭")
+
+
+
+
+
+
+
+
+
+

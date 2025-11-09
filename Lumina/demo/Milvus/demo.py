@@ -1,5 +1,5 @@
 # demo.py
-from milvue_manager import ProductionReadyMilvusManager
+from milvus_manager import ProductionReadyMilvusManager
 import time
 
 

@@ -1,8 +1,8 @@
 """
-URL configuration for DjangoProject project.
+URL configuration for Lumina project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
+    https://docs.Lumina.com/en/5.2/topics/http/urls/
 Examples:
 Function views
     1. Add an import:  from my_app import views
@@ -17,8 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
-from DjangoProject import settings
-from DjangoProject.health.health import health_check
+from Lumina import settings
+from Lumina.health.health import health_check
 from django.conf.urls.static import static
 from user import views
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView

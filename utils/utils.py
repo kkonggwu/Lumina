@@ -1,6 +1,6 @@
 from pydantic import SecretStr
 
-from DjangoProject.config.config import API_KEY
+from Lumina.config.config import API_KEY
 
 
 def get_api_key() -> SecretStr:

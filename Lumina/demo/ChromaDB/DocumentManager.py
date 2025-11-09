@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional, Dict, Any
 
-from DjangoProject.demo.ChromaDB.ChromaDB import ChromaDBManager
+from Lumina.demo.ChromaDB.ChromaDB import ChromaDBManager
 
 
 class DocumentManager(ChromaDBManager):

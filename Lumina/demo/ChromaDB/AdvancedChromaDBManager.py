@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 
-from DjangoProject.demo.ChromaDB.DocumentManager import DocumentManager
+from Lumina.demo.ChromaDB.DocumentManager import DocumentManager
 
 
 class AdvancedChromaDBManager(DocumentManager):
