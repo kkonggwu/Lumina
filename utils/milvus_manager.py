@@ -1,14 +1,12 @@
 import time
 import uuid
-from typing import List
-
-from langchain_community.vectorstores import Milvus
-from sentence_transformers import SentenceTransformer
+from typing import List, Dict, Any, Optional
 from pymilvus import (
     connections,
     FieldSchema, CollectionSchema, DataType,
     Collection, utility
 )
+from sentence_transformers import SentenceTransformer
 
 class MilvusManager:
     def __init__(
@@ -56,7 +54,7 @@ class MilvusManager:
         except Exception as e:
             print(f"Failed to connect to Milvus: {e}")
 
-    def _setup_collection(self) -> Collection:
+    def _setup_collection(self, description: str ="文档存储集合") -> Collection:
         """创建或获取集合"""
         if utility.has_collection(self.collection_name):
             # 使用现有的 collection
@@ -72,7 +70,7 @@ class MilvusManager:
             ]
 
             # 创建 schema
-            schema = CollectionSchema(fields=fields)
+            schema = CollectionSchema(fields=fields, description=description)
 
             # 创建 collection
             collection = Collection(
@@ -238,8 +236,13 @@ class MilvusManager:
             limit: int = 10,
             output_fields: List[str] = None
     ):
-        """查询文档（基于条件过滤）"""
-        # TODO 看一下
+        """
+        查询文档（基于元信息过滤）
+        :param filter_condition: 过滤条件
+        :param limit: 查询个数
+        :param output_fields:
+        :return:
+        """
         if output_fields is None:
             output_fields = ["id", "document", "metadata"]
 

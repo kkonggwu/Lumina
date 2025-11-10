@@ -52,7 +52,7 @@ class ProductionReadyMilvusManager:
             print(f"❌ 连接Milvus失败: {e}")
             raise
 
-    def _setup_collection(self) -> Collection:
+    def _setup_collection(self, description="文档存储集合") -> Collection:
         """创建或获取集合"""
         # 检查集合是否存在
         if utility.has_collection(self.collection_name):
@@ -68,7 +68,7 @@ class ProductionReadyMilvusManager:
             ]
 
             # 创建schema
-            schema = CollectionSchema(fields, description="文档存储集合")
+            schema = CollectionSchema(fields, description=description)
 
             # 创建集合
             collection = Collection(
