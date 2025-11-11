@@ -195,7 +195,6 @@ class UserLoginView(APIView):
 
 class UserInfoView(APIView):
     """获取用户信息视图"""
-    #TODO 有问题："请提供user_id或username参数"
 
     @extend_schema(
         summary="获取用户信息",
@@ -208,7 +207,22 @@ class UserInfoView(APIView):
         - 至少需要提供其中一个参数
         """,
         tags=["用户管理"],
-        request =UserInfoSerializer,
+        parameters=[
+            {
+                "name": "user_id",
+                "in": "query",
+                "description": "用户ID",
+                "required": False,
+                "schema": {"type": "integer"}
+            },
+            {
+                "name": "username",
+                "in": "query",
+                "description": "用户名",
+                "required": False,
+                "schema": {"type": "string"}
+            }
+        ],
         responses={
             200: OpenApiResponse(
                 description="获取成功",
@@ -325,7 +339,16 @@ class ChangePasswordView(APIView):
             username = validated_data.get("username")
             old_password = validated_data.get("old_password")
             new_password = validated_data.get("new_password")
-            user_id  = request.user.get("user_id")
+            
+            # 从用户名获取用户ID（因为JWT认证可能未启用，使用username更可靠）
+            user = UserService.get_user_by_username(username)
+            if not user:
+                return JsonResponse({
+                    "success": False,
+                    "message": "用户不存在"
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            user_id = user.id
 
             # 调用服务层修改密码
             success, message = UserService.change_password(
@@ -359,8 +382,7 @@ class ChangePasswordView(APIView):
 # ============================================
 
 class UserListView(APIView):
-    """用户列表视图（示例）"""
-    #TODO 有问题，Internal Server Error
+    """用户列表视图"""
 
     @extend_schema(
         summary="获取用户列表",

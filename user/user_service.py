@@ -40,7 +40,7 @@ class UserService:
                 is_deleted=UserModel.NOT_DELETED
             )
             # 设置密码（自动加密）
-            # user.set_password(password)
+            user.set_password(password)
             # 保存用户
             user.save()
             
@@ -161,7 +161,7 @@ class UserService:
             tuple: (是否成功, 消息)
         """
         try:
-            user = UserModel.objects.get(id=username, is_deleted=UserModel.NOT_DELETED)
+            user = UserModel.objects.get(id=user_id, is_deleted=UserModel.NOT_DELETED)
             
             # 验证原密码
             if not user.check_password(old_password):
@@ -202,6 +202,42 @@ class UserService:
             tuple: (是否成功, 消息)
         """
         return UserService.update_user(user_id, status=UserModel.ENABLED)
+
+    @staticmethod
+    def get_user_list(user_type=None, page=1, page_size=10):
+        """
+        获取用户列表（支持分页和筛选）
+        
+        Args:
+            user_type: 用户类型筛选（可选）
+            page: 页码，从1开始
+            page_size: 每页数量
+        
+        Returns:
+            tuple: (用户列表, 总数量)
+        """
+        try:
+            # 构建查询
+            query = UserModel.objects.filter(is_deleted=UserModel.NOT_DELETED)
+            
+            # 按用户类型筛选
+            if user_type is not None:
+                try:
+                    user_type = int(user_type)
+                    query = query.filter(user_type=user_type)
+                except (ValueError, TypeError):
+                    pass  # 如果 user_type 无效，忽略筛选
+            
+            # 计算总数
+            total = query.count()
+            
+            # 分页
+            offset = (page - 1) * page_size
+            users = query.order_by('-created_at')[offset:offset + page_size]
+            
+            return list(users), total
+        except Exception as e:
+            return [], 0
 
     @staticmethod
     def delete_user(user_id):
