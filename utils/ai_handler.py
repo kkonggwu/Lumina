@@ -26,7 +26,7 @@ class AIHandler:
         self.config = APIConfig.get_config(provider)
         self.client = AsyncOpenAI(
             api_key=api_key,
-            base_url=api_base,
+            base_url=api_base or self.config["api_base"],
         )
 
         print(f"初始化AI处理器: {provider}")

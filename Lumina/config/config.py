@@ -50,7 +50,7 @@ class APIConfig:
                 "model": APIConfig.QWEN_MODEL,
                 "temperature": APIConfig.QWEN_TEMPERATURE,
                 "max_tokens": APIConfig.QWEN_MAX_TOKENS,
-                "api_base": "https://dashscope.aliyuncs.com/api/v1"  # 阿里云灵积平台API地址
+                "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1"
             }
         else:
             raise ValueError(f"不支持的API提供商: {provider}")

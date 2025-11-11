@@ -6,6 +6,12 @@
 @Date: 2025/11/10
 @Version: 1.0
 """
+TEST_PROMPT = """
+这是一条测试用的PROMPT，你只需要根据以下内容进行交互即可.
+Input text: {text}
+"""
+
+
 # 总结 TEXT 的 prompt
 CONCISE_SUMMARY_PROMPT = """
 # Role: Academic Reading Assistant
