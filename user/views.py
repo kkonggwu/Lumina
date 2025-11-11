@@ -170,7 +170,17 @@ class UserLoginView(APIView):
             # 使用 UserSerializer 格式化返回数据
             if success and user:
                 user_data = UserSerializer(user).data
-                refresh = RefreshToken.for_user(user)
+                
+                # 为自定义UserModel创建JWT token
+                # 由于UserModel不是Django的User模型，需要手动创建token
+                from rest_framework_simplejwt.tokens import RefreshToken
+                
+                # 手动创建RefreshToken并设置user_id
+                refresh = RefreshToken()
+                # 根据SIMPLE_JWT配置，USER_ID_CLAIM是'user_id'
+                refresh['user_id'] = user.id
+                
+                # access_token会自动从refresh token生成，包含相同的user_id
                 access_token = refresh.access_token
 
                 return JsonResponse({

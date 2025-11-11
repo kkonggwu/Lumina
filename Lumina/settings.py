@@ -58,7 +58,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'user.jwt_auth.CustomJWTAuthentication',  # 使用自定义JWT认证
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.AllowAny',  # 可选：默认需要登录，开发环境改成AllowAny
