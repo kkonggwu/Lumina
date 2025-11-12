@@ -6,6 +6,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.models import TokenUser
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
+from drf_spectacular.plumbing import build_bearer_security_scheme_object
 
 
 class CustomJWTAuthentication(JWTAuthentication):
@@ -32,4 +34,24 @@ class CustomJWTAuthentication(JWTAuthentication):
         # TokenUser的构造函数接受validated_token作为参数
         # 它会从token中提取user_id并设置到id属性
         return TokenUser(validated_token)
+
+
+class CustomJWTAuthenticationScheme(OpenApiAuthenticationExtension):
+    """
+    自定义JWT认证的OpenAPI扩展
+    用于在Swagger UI中显示认证按钮
+    """
+    target_class = 'user.jwt_auth.CustomJWTAuthentication'  # 目标认证类
+    name = 'BearerAuth'  # 认证名称
+
+    def get_security_definition(self, auto_schema):
+        """定义安全方案"""
+        security_scheme = build_bearer_security_scheme_object(
+            header_name='Authorization',
+            token_prefix='Bearer',
+            bearer_format='JWT'
+        )
+        # 手动添加description
+        security_scheme['description'] = '输入JWT令牌，格式为：Bearer <token>'
+        return security_scheme
 

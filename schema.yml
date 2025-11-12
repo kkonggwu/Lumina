@@ -2,14 +2,223 @@ openapi: 3.0.3
 info:
   title: Lumina API 文档
   version: 1.0.0
-  description:
-    "\n    # Lumina API 接口文档\n    \n    这是一个基于Django和Django REST\
-    \ Framework构建的Web API项目。\n    \n    ## 功能模块\n    \n    - **用户管理**: 用户注册、登录、信息查询、密码修改\n\
-    \    - **健康检查**: 服务状态监控和系统信息查询\n    \n    ## 认证方式\n    \n    目前使用简单的Token认证，后续可扩展为JWT认证。\n\
-    \    \n    ## 响应格式\n    \n    所有API响应都遵循统一的JSON格式：\n    ```json\n    {\n     \
-    \   \"code\": 200,\n        \"message\": \"success\",\n        \"data\": {}\n\
-    \    }\n    ```\n    "
+  description: Lumina API 接口文档
 paths:
+  /api/rag/chat/:
+    post:
+      operationId: chat
+      description: "\n        普通问答接口，学生和教师都可以使用。\n        \n        **功能说明：**\n  \
+        \      - 直接调用大模型进行问答，不依赖课程文档\n        - 支持会话管理（通过session_id）\n        - 自动保存问答历史\n\
+        \        \n        **使用场景：**\n        - 学生提问一般性问题\n        - 教师咨询教学相关问题\n\
+        \        - 不需要基于课程文档的问答\n        \n        **注意事项：**\n        - 需要登录认证\n \
+        \       - session_id可选，不提供时会自动生成\n        - course_id可选，普通问答时可为空\n        "
+      summary: 普通问答
+      tags:
+      - RAG问答
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChatRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChatRequestRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponseData'
+          description: 问答成功
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未登录
+        '500':
+          description: 服务器内部错误
+  /api/rag/history/:
+    get:
+      operationId: get_chat_history
+      description: "\n        获取用户的问答历史记录。\n        \n        **功能说明：**\n        -\
+        \ 可以按会话ID筛选\n        - 可以按课程ID筛选\n        - 支持分页（通过limit参数）\n        \n  \
+        \      **查询参数：**\n        - session_id: 会话ID（可选）\n        - course_id: 课程ID（可选）\n\
+        \        - limit: 返回记录数量（默认10，最大100）\n        "
+      summary: 获取问答历史
+      tags:
+      - RAG问答
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatHistoryResponse'
+          description: 获取成功
+        '401':
+          description: 未登录
+        '500':
+          description: 服务器内部错误
+  /api/users/change-password/:
+    post:
+      operationId: change_password
+      description: "\n        修改用户密码接口。\n\n        **功能说明：**\n        - 需要验证旧密码\n\
+        \        - 新密码自动加密存储\n        - 修改成功后建议重新登录\n        "
+      summary: 修改密码
+      tags:
+      - 用户管理
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangePasswordResponse'
+          description: 修改成功
+        '400':
+          description: 数据验证失败或旧密码错误
+        '500':
+          description: 服务器内部错误
+  /api/users/info/:
+    get:
+      operationId: get_user_info
+      description: "\n        获取用户详细信息接口。\n\n        **查询方式：**\n        - 通过user_id查询\n\
+        \        - 通过username查询\n        - 至少需要提供其中一个参数\n        "
+      summary: 获取用户信息
+      tags:
+      - 用户管理
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+          description: 获取成功
+        '400':
+          description: 参数错误
+        '404':
+          description: 用户不存在
+        '500':
+          description: 服务器内部错误
+  /api/users/list/:
+    get:
+      operationId: get_user_list
+      description: 获取所有用户列表
+      summary: 获取用户列表
+      tags:
+      - 用户管理
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+          description: 获取成功
+  /api/users/login/:
+    post:
+      operationId: user_login
+      description: "\n        用户登录接口，验证用户名和密码。\n\n        **功能说明：**\n        - 验证用户凭据\n\
+        \        - 更新最后登录时间和IP\n        - 返回用户基本信息\n\n        **安全特性：**\n        -\
+        \ 密码使用加密验证\n        - 记录登录IP地址\n        - 更新最后登录时间\n        "
+      summary: 用户登录
+      tags:
+      - 用户管理
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLoginResponse'
+          description: 登录成功
+        '400':
+          description: 数据验证失败
+        '401':
+          description: 用户名或密码错误
+        '500':
+          description: 服务器内部错误
+  /api/users/register/:
+    post:
+      operationId: user_register
+      description: "\n        用户注册接口，支持管理员、教师、学生三种用户类型注册。\n\n        **用户类型说明：**\n\
+        \        - 0: 管理员\n        - 1: 教师  \n        - 2: 学生（默认）\n\n        **注意事项：**\n\
+        \        - 用户名必须唯一\n        - 密码会自动加密存储\n        - 邮箱和手机号为可选字段\n        "
+      summary: 用户注册
+      tags:
+      - 用户管理
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRegisterResponse'
+          description: 注册成功
+        '400':
+          description: 数据验证失败
+        '500':
+          description: 服务器内部错误
   /health/:
     get:
       operationId: health_retrieve
@@ -22,77 +231,467 @@ paths:
         - 服务运行时间
         - 内存使用情况
       tags:
-        - health
+      - health
       security:
-        - cookieAuth: []
-        - basicAuth: []
-        - {}
+      - BearerAuth: []
+      - Bearer: []
+      - {}
       responses:
-        "200":
-          description: No response body
-  /api/user/register/:
-    post:
-      operationId: user_register_create
-      description: 用户注册接口
-      tags:
-        - user
-      security:
-        - cookieAuth: []
-        - basicAuth: []
-        - {}
-      responses:
-        "200":
-          description: No response body
-  /api/user/login/:
-    post:
-      operationId: user_login_create
-      description: 用户登录接口
-      tags:
-        - user
-      security:
-        - cookieAuth: []
-        - basicAuth: []
-        - {}
-      responses:
-        "200":
-          description: No response body
-  /api/user/info/:
-    get:
-      operationId: user_info_retrieve
-      description: 获取用户信息接口
-      tags:
-        - user
-      security:
-        - cookieAuth: []
-        - basicAuth: []
-        - {}
-      responses:
-        "200":
-          description: No response body
-  /api/user/change-password/:
-    post:
-      operationId: user_change_password_create
-      description: 修改密码接口
-      tags:
-        - user
-      security:
-        - cookieAuth: []
-        - basicAuth: []
-        - {}
-      responses:
-        "200":
+        '200':
           description: No response body
 components:
+  schemas:
+    ChangePasswordRequest:
+      type: object
+      description: 修改密码序列化器
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: 用户名，长度2-50个字符
+          maxLength: 50
+        old_password:
+          type: string
+          minLength: 1
+          description: 当前密码
+        new_password:
+          type: string
+          minLength: 6
+          description: 新密码，至少6个字符
+      required:
+      - new_password
+      - old_password
+      - username
+    ChangePasswordResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+      - message
+      - success
+    ChatHistoryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/QAHistory'
+        total:
+          type: integer
+      required:
+      - data
+      - message
+      - success
+      - total
+    ChatRequestRequest:
+      type: object
+      description: 普通问答请求序列化器
+      properties:
+        question:
+          type: string
+          minLength: 1
+          description: 用户问题
+          maxLength: 2000
+        session_id:
+          type: string
+          description: 会话ID，用于多轮对话。如果不提供，系统会自动生成
+          maxLength: 50
+        course_id:
+          type: integer
+          nullable: true
+          description: 关联课程ID（可选，普通问答时可为空）
+      required:
+      - question
+    ChatResponse:
+      type: object
+      description: 问答响应序列化器
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          title: 历史ID
+        user_id:
+          type: integer
+          readOnly: true
+          title: 用户ID
+        course_id:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 关联课程ID
+        session_id:
+          type: string
+          readOnly: true
+          title: 会话ID
+        question:
+          type: string
+          title: 用户问题
+        answer:
+          type: string
+          readOnly: true
+          title: 系统回答
+        context_docs:
+          readOnly: true
+          nullable: true
+          title: 参考文档信息
+        source_documents:
+          readOnly: true
+          nullable: true
+          title: 来源文档(JSON格式)
+        prompt_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 提示令牌数
+        completion_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 完成令牌数
+        total_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 总令牌数
+        feedback:
+          nullable: true
+          title: 用户反馈
+          minimum: -2147483648
+          maximum: 2147483647
+          oneOf:
+          - $ref: '#/components/schemas/FeedbackEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - answer
+      - completion_tokens
+      - context_docs
+      - course_id
+      - created_at
+      - id
+      - prompt_tokens
+      - question
+      - session_id
+      - source_documents
+      - total_tokens
+      - user_id
+    ChatResponseData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ChatResponse'
+      required:
+      - data
+      - message
+      - success
+    FeedbackEnum:
+      enum:
+      - 0
+      - 1
+      type: integer
+      description: |-
+        * `0` - 否定
+        * `1` - 肯定
+    NullEnum:
+      enum:
+      - null
+    QAHistory:
+      type: object
+      description: 问答历史序列化器（用于查询历史记录）
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          title: 历史ID
+        user_id:
+          type: integer
+          readOnly: true
+          title: 用户ID
+        course_id:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 关联课程ID
+        session_id:
+          type: string
+          readOnly: true
+          title: 会话ID
+        question:
+          type: string
+          readOnly: true
+          title: 用户问题
+        answer:
+          type: string
+          readOnly: true
+          title: 系统回答
+        context_docs:
+          readOnly: true
+          nullable: true
+          title: 参考文档信息
+        source_documents:
+          readOnly: true
+          nullable: true
+          title: 来源文档(JSON格式)
+        prompt_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 提示令牌数
+        completion_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 完成令牌数
+        total_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: 总令牌数
+        feedback:
+          readOnly: true
+          nullable: true
+          title: 用户反馈
+          oneOf:
+          - $ref: '#/components/schemas/FeedbackEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - answer
+      - completion_tokens
+      - context_docs
+      - course_id
+      - created_at
+      - feedback
+      - id
+      - prompt_tokens
+      - question
+      - session_id
+      - source_documents
+      - total_tokens
+      - user_id
+    StatusEnum:
+      enum:
+      - 0
+      - 1
+      type: integer
+      description: |-
+        * `0` - 禁用
+        * `1` - 启用
+    User:
+      type: object
+      description: 用户序列化器，用于用户数据的序列化和反序列化
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          title: 用户ID
+        username:
+          type: string
+          title: 用户名
+          maxLength: 50
+        nickname:
+          type: string
+          title: 昵称
+          maxLength: 50
+        user_type:
+          allOf:
+          - $ref: '#/components/schemas/UserTypeEnum'
+          title: 用户类型
+          minimum: -2147483648
+          maximum: 2147483647
+        user_type_name:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          nullable: true
+          title: 邮箱
+          maxLength: 100
+        phone:
+          type: string
+          nullable: true
+          title: 手机号
+          maxLength: 20
+        avatar:
+          type: string
+          nullable: true
+          title: 头像URL
+          maxLength: 255
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          title: 状态
+          minimum: -2147483648
+          maximum: 2147483647
+        last_login_time:
+          type: string
+          format: date-time
+          readOnly: true
+        last_login_ip:
+          type: string
+          nullable: true
+          title: 最后登录IP
+          maxLength: 45
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - last_login_time
+      - nickname
+      - updated_at
+      - user_type_name
+      - username
+    UserInfoResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/User'
+      required:
+      - data
+      - message
+      - success
+    UserListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        total:
+          type: integer
+      required:
+      - data
+      - message
+      - success
+      - total
+    UserLoginRequest:
+      type: object
+      description: 用户登录序列化器
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: 用户名，长度2-50个字符
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+          description: 密码，至少6个字符
+      required:
+      - password
+      - username
+    UserLoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/User'
+        access:
+          type: string
+        refresh:
+          type: string
+      required:
+      - access
+      - data
+      - message
+      - refresh
+      - success
+    UserRegisterRequest:
+      type: object
+      description: 用户注册序列化器
+      properties:
+        username:
+          type: string
+          minLength: 2
+          description: 用户名，长度2-50个字符，必须唯一
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+          description: 密码，至少6个字符
+        nickname:
+          type: string
+          minLength: 1
+          description: 昵称，长度不超过50个字符
+          maxLength: 50
+        user_type:
+          type: integer
+          default: 2
+          description: 用户类型：0=管理员，1=教师，2=学生（默认）
+        email:
+          type: string
+          format: email
+          description: 邮箱地址（可选）
+        phone:
+          type: string
+          description: 手机号码（可选）
+          maxLength: 20
+      required:
+      - nickname
+      - password
+      - username
+    UserRegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/User'
+      required:
+      - data
+      - message
+      - success
+    UserTypeEnum:
+      enum:
+      - 0
+      - 1
+      - 2
+      type: integer
+      description: |-
+        * `0` - 管理员
+        * `1` - 教师
+        * `2` - 学生
   securitySchemes:
-    basicAuth:
+    BearerAuth:
       type: http
-      scheme: basic
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: sessionid
-tags:
-  - name: 用户管理
-    description: 用户注册、登录、信息管理相关接口
-  - name: 系统监控
-    description: 健康检查、系统状态监控接口
+      scheme: bearer
+      bearerFormat: JWT
+      description: 输入JWT令牌，格式为：Bearer <token>

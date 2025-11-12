@@ -119,6 +119,22 @@ SPECTACULAR_SETTINGS = {
 
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
+    
+    # JWT认证配置 - 添加这部分使Swagger UI显示authorize区域
+    'SCHEMA_PATH_PREFIX': '/api/',
+    'SECURITY': [
+        {'Bearer': []},
+    ],
+    'COMPONENTS': {
+        'securitySchemes': {
+            'Bearer': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+                'description': '输入JWT令牌，格式为：Bearer <token>'
+            }
+        }
+    },
 }
 
 MIDDLEWARE = [
