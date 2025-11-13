@@ -1,6 +1,11 @@
 import time
 import uuid
 from typing import List, Dict, Any, Optional
+
+from utils.logger import get_logger
+
+# 使用LoggerManager
+logger = get_logger('milvus_manager')
 from pymilvus import (
     connections,
     FieldSchema, CollectionSchema, DataType,
@@ -50,16 +55,16 @@ class MilvusManager:
                 host=self.host,
                 port=self.port
             )
-            print(f"Connected to {self.host}:{self.port} successfully.")
+            logger.info(f"Connected to {self.host}:{self.port} successfully.")
         except Exception as e:
-            print(f"Failed to connect to Milvus: {e}")
+            logger.error(f"Failed to connect to Milvus: {e}")
 
     def _setup_collection(self, description: str ="文档存储集合") -> Collection:
         """创建或获取集合"""
         if utility.has_collection(self.collection_name):
             # 使用现有的 collection
             collection = Collection(self.collection_name)
-            print(f"Collection {self.collection_name} already exists.")
+            logger.info(f"Collection {self.collection_name} already exists.")
         else:
             # 创建新的 collection
             fields = [
@@ -91,14 +96,14 @@ class MilvusManager:
                 index_params=index_params
             )
 
-            print(f"✅ Created collection {self.collection_name} successfully.")
+            logger.info(f"✅ Created collection {self.collection_name} successfully.")
 
         return collection
 
     def _load_collection(self):
         """加载集合到内存"""
         try:
-            print("🔄 正在加载集合到内存...")
+            logger.info("🔄 正在加载集合到内存...")
             self.collection.load()
 
             # 等待加载完成
@@ -108,18 +113,18 @@ class MilvusManager:
                 try:
                     # 尝试执行一个简单的查询来检查集合是否已加载
                     self.collection.query(expr="id != ''", limit=1, output_fields=["id"])
-                    print("✅ 集合加载完成")
+                    logger.info("✅ 集合加载完成")
                     return
                 except Exception:
                     # 如果查询失败，说明集合还在加载中
                     time.sleep(1)
                     retry_count += 1
-                    print(f"等待集合加载... ({retry_count}/{max_retries})")
+                    logger.info(f"等待集合加载... ({retry_count}/{max_retries})")
 
-            print("⚠️ 集合加载可能未完成，但继续执行...")
+            logger.warning("⚠️ 集合加载可能未完成，但继续执行...")
 
         except Exception as e:
-            print(f"❌ 加载集合失败: {e}")
+            logger.error(f"❌ 加载集合失败: {e}")
 
 
     def _is_collection_loaded(self) -> bool:
@@ -177,7 +182,7 @@ class MilvusManager:
         result = self.collection.insert(entities)
         # 刷新数据，确保可以被检索到
         self.collection.flush()
-        print(f"✅ 成功插入 {len(documents)} 个文档")
+        logger.info(f"✅ 成功插入 {len(documents)} 个文档")
         return ids
 
     def search_similar(
@@ -195,7 +200,7 @@ class MilvusManager:
         """
         # 确保集合已加载
         if not self._is_collection_loaded():
-            print("🔄 搜索前自动加载集合...")
+            logger.info("🔄 搜索前自动加载集合...")
             self._load_collection()
 
         query_embedding = self.generate_embeddings([query])[0]
@@ -271,12 +276,12 @@ class MilvusManager:
 
         self.collection.delete(expr)
         self.collection.flush()
-        print(f"✅ 删除 {len(ids)} 个文档")
+        logger.info(f"✅ 删除 {len(ids)} 个文档")
 
     def drop_collection(self):
         """删除整个集合"""
         utility.drop_collection(self.collection_name)
-        print(f"✅ 集合 '{self.collection_name}' 已删除")
+        logger.info(f"✅ 集合 '{self.collection_name}' 已删除")
 
     def close(self):
         """关闭连接"""
@@ -287,7 +292,7 @@ class MilvusManager:
             pass  # 忽略释放错误
 
         connections.disconnect("default")
-        print("✅ Milvus连接已关闭")
+        logger.info("✅ Milvus连接已关闭")
 
 
 

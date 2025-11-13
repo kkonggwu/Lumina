@@ -10,6 +10,10 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from Lumina.config.config import APIConfig
+from utils.logger import get_logger
+
+# 使用LoggerManager
+logger = get_logger('ai_handler')
 
 
 class AIHandler:
@@ -29,7 +33,7 @@ class AIHandler:
             base_url=api_base or self.config["api_base"],
         )
 
-        print(f"初始化AI处理器: {provider}")
+        logger.info(f"初始化AI处理器: {provider}")
 
     async def chat(self, text: str, prompt_template: str) -> str:
         """
@@ -38,7 +42,7 @@ class AIHandler:
         :param prompt_template: prompt 模板
         :return:
         """
-        print(f"处理文本: 长度={len(text)}")
+        logger.info(f"处理文本: 长度={len(text)}")
 
         # 拼接 prompt
         prompt = prompt_template.format(text=text)
@@ -47,7 +51,7 @@ class AIHandler:
         if not result:
             raise Exception("API返回结果为空!")
 
-        print(f"处理完成，结果长度={len(result)}")
+        logger.info(f"处理完成，结果长度={len(result)}")
         return result
 
     async def get_completion(
@@ -64,7 +68,7 @@ class AIHandler:
         :return:
         """
         try:
-            print(f"调用API: provider={self.provider}")
+            logger.info(f"调用API: provider={self.provider}")
             max_tokens = max_tokens or self.config["max_tokens"]
             temperature = temperature or self.config["temperature"]
 
@@ -79,11 +83,11 @@ class AIHandler:
             )
 
             result = response.choices[0].message.content
-            print(f"API调用成功: 结果长度={len(result)}")  # 添加日志
+            logger.info(f"API调用成功: 结果长度={len(result)}")
             return result
         except Exception as e:
             error_msg = str(e)
-            print(f"API调用错误: {error_msg}")  # 添加日志
+            logger.error(f"API调用错误: {error_msg}")
 
             if "insufficient_user_quota" in error_msg:
                 raise Exception("API配额不足，请检查账户余额或联系服务提供商")

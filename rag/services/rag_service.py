@@ -156,4 +156,3 @@ class RAGService:
             return list(history)
         except Exception as e:
             return []
-
