@@ -88,7 +88,6 @@ class RAGService:
             # 在同步上下文中运行异步API调用
             # 创建一个新的事件循环来运行异步代码，避免与Django的事件循环冲突
             try:
-                # 尝试使用asyncio.run()（Python 3.7+）
                 answer = asyncio.run(self._get_ai_answer(question))
             except RuntimeError:
                 # 如果asyncio.run()失败（可能因为已有事件循环），使用备用方法
