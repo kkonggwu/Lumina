@@ -117,7 +117,7 @@ class ChatView(APIView):
 
             # 调用RAG服务进行问答
             rag_service = RAGService()
-            success, message, qa_history = rag_service.chat_sync(
+            success, message, qa_history = rag_service.chat_sync_basic(
                 user_id=user_id,
                 question=question,
                 session_id=session_id,

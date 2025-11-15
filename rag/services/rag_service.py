@@ -40,7 +40,7 @@ class RAGService:
             api_base=config["api_base"]
         )
 
-    async def _get_ai_answer(self, question: str) -> str:
+    async def _get_ai_answer_basic(self, question: str) -> str:
         """
         异步获取AI回答（不涉及数据库操作）
         
@@ -54,14 +54,14 @@ class RAGService:
         prompt_template = CHAT_PROMPT
         
         # 调用AI处理器获取回答
-        answer = await self.ai_handler.chat(question, prompt_template)
+        answer = await self.ai_handler.chat_basic(question, prompt_template)
         
         if not answer:
             raise Exception("AI返回结果为空")
         
         return answer
 
-    def chat_sync(
+    def chat_sync_basic(
         self,
         user_id: int,
         question: str,
@@ -88,13 +88,13 @@ class RAGService:
             # 在同步上下文中运行异步API调用
             # 创建一个新的事件循环来运行异步代码，避免与Django的事件循环冲突
             try:
-                answer = asyncio.run(self._get_ai_answer(question))
+                answer = asyncio.run(self._get_ai_answer_basic(question))
             except RuntimeError:
                 # 如果asyncio.run()失败（可能因为已有事件循环），使用备用方法
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    answer = loop.run_until_complete(self._get_ai_answer(question))
+                    answer = loop.run_until_complete(self._get_ai_answer_basic(question))
                 finally:
                     loop.close()
 

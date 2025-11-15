@@ -23,7 +23,7 @@ async def main():
     print("正在与大模型交互")
 
     # 使用 await 调用异步方法
-    result = await handler.chat("你好，可以介绍一下你自己吗?", prompt)
+    result = await handler.chat_basic("你好，可以介绍一下你自己吗?", prompt)
 
     print("返回结果为：")
     print("==================================")

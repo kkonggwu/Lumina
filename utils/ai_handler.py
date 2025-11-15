@@ -35,7 +35,7 @@ class AIHandler:
 
         logger.info(f"初始化AI处理器: {provider}")
 
-    async def chat(self, text: str, prompt_template: str) -> str:
+    async def chat_basic(self, text: str, prompt_template: str) -> str:
         """
         与 AI 交互
         :param text: 用户文本
