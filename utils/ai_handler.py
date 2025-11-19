@@ -7,17 +7,18 @@
 @Version: 1.0
 """
 import asyncio
+import os
 from typing import List, Iterator, Optional, AsyncIterator
 
+from langchain_community.chat_models import ChatOpenAI
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
-from Lumina.config.config import APIConfig
+from config.config import APIConfig
 from utils.logger import get_logger
 from utils.prompt_template import CHAT_PROMPT_USING_CONTEXT
 

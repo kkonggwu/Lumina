@@ -9,9 +9,8 @@
 from typing import List, Dict
 
 from langchain_community.vectorstores import Milvus
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
 
 
 class LangChainMilvusManager:
@@ -85,3 +84,12 @@ class LangChainMilvusManager:
     def get_retriever(self, **kwargs):
         """获取LangChain标准检索器"""
         return self.vector_store.as_retriever(**kwargs)
+    
+    def add_documents(self, documents: List[Document]):
+        """
+        添加文档到向量存储（兼容LangChain接口）
+        :param documents: Document对象列表
+        :return: 文档ID列表
+        """
+        doc_ids = self.vector_store.add_documents(documents)
+        return doc_ids

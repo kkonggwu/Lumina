@@ -37,8 +37,8 @@ class RetrievalOptimization:
         """设置向量检索器和BM25检索器"""
         logger.info("正在设置检索器...")
 
-        # 向量检索器 - 根据类型配置不同参数
-        self.vector_retriever = self.vectorstore.get_retriever(
+        # 向量检索器 - 使用as_retriever方法
+        self.vector_retriever = self.vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={"k": 5}
         )
@@ -58,8 +58,9 @@ class RetrievalOptimization:
         :param top_k: 返回结果数量
         :return: 检索到的文档列表
         """
-        vector_docs = self.vector_retriever.search_similar(query)
-        bm25_docs = self.bm25_retriever.get_vector(query)
+        # 使用正确的检索器方法
+        vector_docs = self.vector_retriever.get_relevant_documents(query)
+        bm25_docs = self.bm25_retriever.get_relevant_documents(query)
         
         reranked_docs = self._rrf_rerank(vector_docs, bm25_docs)
         return reranked_docs[:top_k]

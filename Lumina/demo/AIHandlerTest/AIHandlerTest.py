@@ -7,7 +7,7 @@
 @Version: 1.0
 """
 import asyncio
-from Lumina.config.config import APIConfig
+from config.config import APIConfig
 from utils.ai_handler import AIHandler
 from utils.prompt_template import CONCISE_SUMMARY_PROMPT
 import os

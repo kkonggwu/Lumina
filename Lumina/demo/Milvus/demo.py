@@ -133,6 +133,6 @@ def cleanup_and_restart():
 
 if __name__ == "__main__":
     # 如果需要重新开始，取消下面的注释
-    # cleanup_and_restart()
+    cleanup_and_restart()
 
-    demo_production_milvus()
+    # demo_production_milvus()

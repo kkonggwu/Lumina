@@ -9,6 +9,7 @@
 import hashlib
 import logging
 import uuid
+import warnings
 from typing import List, Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -34,7 +35,7 @@ class DataProcessor:
     }
     CATEGORY_LABELS = list(set(CATEGORY_MAPPING.values()))
 
-    def __init__(self, data_path: str):
+    def __init__(self, data_path: str ):
         """
         初始化数据准备模块
 
