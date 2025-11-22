@@ -62,10 +62,26 @@ class MilvusManager:
     def _setup_collection(self, description: str ="文档存储集合") -> Collection:
         """创建或获取集合"""
         if utility.has_collection(self.collection_name):
-            # 使用现有的 collection
+            # 检查现有集合的schema是否匹配
             collection = Collection(self.collection_name)
-            logger.info(f"Collection {self.collection_name} already exists.")
-        else:
+            schema = collection.schema
+            
+            # 检查字段数量和名称是否匹配
+            expected_fields = {"id", "document", "vector", "metadata"}
+            actual_fields = {field.name for field in schema.fields}
+            
+            # 如果schema不匹配，删除旧集合并重新创建
+            if actual_fields != expected_fields or len(schema.fields) != 4:
+                logger.warning(f"集合 {self.collection_name} 的schema不匹配，将删除并重新创建")
+                logger.warning(f"期望字段: {expected_fields}, 实际字段: {actual_fields}, 字段数: {len(schema.fields)}")
+                utility.drop_collection(self.collection_name)
+                logger.info(f"已删除旧集合 {self.collection_name}")
+            else:
+                logger.info(f"Collection {self.collection_name} already exists and schema matches.")
+                return collection
+        
+        # 创建新的 collection
+        if not utility.has_collection(self.collection_name):
             # 创建新的 collection
             fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=100),
@@ -111,8 +127,8 @@ class MilvusManager:
             max_retries = 10
             while retry_count < max_retries:
                 try:
-                    # 尝试执行一个简单的查询来检查集合是否已加载
-                    self.collection.query(expr="id != ''", limit=1, output_fields=["id"])
+                    # 使用num_entities检查集合是否已加载（更可靠的方法）
+                    _ = self.collection.num_entities
                     logger.info("✅ 集合加载完成")
                     return
                 except Exception:
@@ -130,8 +146,9 @@ class MilvusManager:
     def _is_collection_loaded(self) -> bool:
         """检查集合是否已加载"""
         try:
-            # 尝试执行一个简单的查询来检查集合状态
-            self.collection.query(expr="id != ''", limit=1, output_fields=["id"])
+            # 使用num_entities检查集合是否已加载（更可靠的方法）
+            # 如果集合已加载，可以访问num_entities属性
+            _ = self.collection.num_entities
             return True
         except Exception:
             return False

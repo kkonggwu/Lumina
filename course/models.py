@@ -28,6 +28,8 @@ class Course(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'course'  # 数据库表名
         verbose_name = '课程'
         verbose_name_plural = '课程管理'
         indexes = [
@@ -54,6 +56,8 @@ class Enrollment(models.Model):
     is_deleted = models.BooleanField(default=False, verbose_name='逻辑删除')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'enrollment'  # 数据库表名
         verbose_name = '选课关系'
         verbose_name_plural = '选课管理'
         unique_together = ('course', 'student')
@@ -87,6 +91,8 @@ class Document(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'document'  # 数据库表名
         verbose_name = '文档'
         verbose_name_plural = '文档管理'
         indexes = [
@@ -118,6 +124,8 @@ class Assignment(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'assignment'  # 数据库表名
         verbose_name = '作业'
         verbose_name_plural = '作业管理'
         indexes = [
@@ -150,6 +158,8 @@ class Submission(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'submission'  # 数据库表名
         verbose_name = '作业提交'
         verbose_name_plural = '作业提交管理'
         unique_together = ('assignment', 'student')
@@ -174,6 +184,8 @@ class Grade(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
+        managed = False  # 不自动创建和管理表（表已存在）
+        db_table = 'grade'  # 数据库表名
         verbose_name = '评分详情'
         verbose_name_plural = '评分管理'
 

@@ -54,3 +54,11 @@ export const changePassword = (data) => {
   })
 }
 
+// 删除用户
+export const deleteUser = (userId) => {
+  return request({
+    url: `/users/delete/${userId}/`,
+    method: 'delete'
+  })
+}
+

@@ -62,7 +62,7 @@ class ProductionReadyMilvusManager:
             # 定义字段
             fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=100),
-                FieldSchema(name="document", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="course", dtype=DataType.VARCHAR, max_length=65535),
                 FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=self.dimension),
                 FieldSchema(name="metadata", dtype=DataType.JSON)
             ]
@@ -205,7 +205,7 @@ class ProductionReadyMilvusManager:
             param=search_params,
             limit=limit,
             expr=filter_condition,
-            output_fields=["document", "metadata", "id"]
+            output_fields=["course", "metadata", "id"]
         )
 
         # 格式化结果
@@ -214,7 +214,7 @@ class ProductionReadyMilvusManager:
             for hit in hits:
                 formatted_results.append({
                     'id': hit.id,
-                    'document': hit.entity.get('document'),
+                    'course': hit.entity.get('course'),
                     'metadata': hit.entity.get('metadata'),
                     'distance': hit.distance,
                     'score': 1 - hit.distance  # 相似度分数
@@ -230,7 +230,7 @@ class ProductionReadyMilvusManager:
     ):
         """查询文档（基于条件过滤）"""
         if output_fields is None:
-            output_fields = ["id", "document", "metadata"]
+            output_fields = ["id", "course", "metadata"]
 
         results = self.collection.query(
             expr=filter_condition,

@@ -71,7 +71,7 @@ class AdvancedChromaDBManager(DocumentManager):
 
             if similarity_score >= score_threshold:
                 formatted_results.append({
-                    'document': doc,
+                    'course': doc,
                     'metadata': metadata,
                     'similarity_score': round(similarity_score, 4),
                     'distance': round(distance, 4),
@@ -113,7 +113,7 @@ class AdvancedChromaDBManager(DocumentManager):
                 results['distances'][0]
         )):
             formatted_results.append({
-                'document': doc,
+                'course': doc,
                 'metadata': metadata,
                 'similarity_score': round(1 - distance, 4),
                 'id': results['ids'][0][i]

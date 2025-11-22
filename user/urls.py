@@ -4,7 +4,9 @@ from .views import (
     UserLoginView,
     UserInfoView,
     ChangePasswordView,
-    UserListView
+    UserListView,
+    UserUpdateView,
+    UserDeleteView
 )
 
 # app_name 用于反向解析 URL
@@ -35,4 +37,14 @@ urlpatterns = [
     # URL: /api/users/list/?page=1&page_size=10&user_type=2
     # 方法: GET
     path('list/', UserListView.as_view(), name='user_list'),
+    
+    # 更新用户信息
+    # URL: /api/users/update/<user_id>/
+    # 方法: PUT
+    path('update/<int:user_id>/', UserUpdateView.as_view(), name='update_user'),
+    
+    # 删除用户
+    # URL: /api/users/delete/<user_id>/
+    # 方法: DELETE
+    path('delete/<int:user_id>/', UserDeleteView.as_view(), name='delete_user'),
 ]

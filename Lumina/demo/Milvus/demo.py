@@ -64,7 +64,7 @@ def demo_production_milvus():
 
                 for i, result in enumerate(results):
                     print(f"{i + 1}. 相似度: {result['score']:.4f} (距离: {result['distance']:.4f})")
-                    print(f"   文档: {result['document']}")
+                    print(f"   文档: {result['course']}")
                     print(f"   元数据: {result['metadata']}")
                     print(f"   ID: {result['id']}")
                     print()
@@ -84,7 +84,7 @@ def demo_production_milvus():
             print("查询条件: category == 'AI基础'")
             for i, result in enumerate(query_results):
                 print(f"{i + 1}. ID: {result['id']}")
-                print(f"   文档: {result['document']}")
+                print(f"   文档: {result['course']}")
                 print(f"   元数据: {result['metadata']}")
                 print()
 

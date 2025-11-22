@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'TestModel',
     "user",
     "rag",
+    "course",
 ]
 
 REST_FRAMEWORK = {

@@ -43,6 +43,7 @@
             <td>
               <button @click="editUser(user)" class="action-btn edit">编辑</button>
               <button @click="changePassword(user)" class="action-btn password">改密</button>
+              <button v-if="isAdmin" @click="confirmDelete(user)" class="action-btn delete">删除</button>
             </td>
           </tr>
         </tbody>
@@ -117,8 +118,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getUserList, updateUser, changePassword as changePasswordApi } from '@/api/user'
+import { ref, onMounted, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { getUserList, updateUser, changePassword as changePasswordApi, deleteUser as deleteUserApi } from '@/api/user'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
 
 const users = ref([])
 const loading = ref(false)
@@ -230,6 +235,27 @@ const handleChangePassword = async () => {
     }
   } catch (error) {
     alert(error.message || '密码修改失败')
+  }
+}
+
+const confirmDelete = (user) => {
+  if (confirm(`确定要删除用户 "${user.nickname || user.username}" 吗？此操作不可恢复！`)) {
+    handleDelete(user.id)
+  }
+}
+
+const handleDelete = async (userId) => {
+  try {
+    const response = await deleteUserApi(userId)
+    if (response.success) {
+      alert('删除成功')
+      loadUsers()
+    } else {
+      alert(response.message || '删除失败')
+    }
+  } catch (error) {
+    console.error('删除失败:', error)
+    alert(error.message || '删除失败')
   }
 }
 
@@ -369,6 +395,11 @@ onMounted(() => {
 .action-btn.password {
   background: #fff4e5;
   color: #ffa502;
+}
+
+.action-btn.delete {
+  background: #ffe5e5;
+  color: #ff4757;
 }
 
 .action-btn:hover {

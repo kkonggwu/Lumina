@@ -30,6 +30,8 @@ urlpatterns = [
     path('api/users/', include('user.urls')),
     # RAG相关API
     path('api/rag/', include('rag.urls')),
+    # 课程和文档相关API
+    path('api/course/', include('course.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),

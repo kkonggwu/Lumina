@@ -9,28 +9,24 @@
           <span class="user-type">{{ userTypeName }}</span>
         </p>
       </div>
-      
+
       <nav class="sidebar-nav">
-        <router-link 
-          to="/chat" 
-          class="nav-item"
-          :class="{ active: $route.path === '/chat' }"
-        >
+        <router-link to="/chat" class="nav-item" :class="{ active: $route.path === '/chat' }">
           <span class="nav-icon">💬</span>
           <span class="nav-text">智能问答</span>
         </router-link>
-        
-        <router-link 
-          v-if="!isStudent"
-          to="/users" 
-          class="nav-item"
-          :class="{ active: $route.path === '/users' }"
-        >
+
+        <router-link to="/documents" class="nav-item" :class="{ active: $route.path === '/documents' }">
+          <span class="nav-icon">📚</span>
+          <span class="nav-text">文档管理</span>
+        </router-link>
+
+        <router-link v-if="!isStudent" to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
           <span class="nav-icon">👥</span>
           <span class="nav-text">用户管理</span>
         </router-link>
       </nav>
-      
+
       <div class="sidebar-footer">
         <button @click="handleLogout" class="logout-btn">
           <span class="nav-icon">🚪</span>
@@ -188,4 +184,3 @@ const handleLogout = () => {
   overflow-y: auto;
 }
 </style>
-

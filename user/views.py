@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
 from rest_framework.views import APIView
 from rest_framework import status, serializers
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .user_service import UserService
@@ -537,4 +538,110 @@ class UserUpdateView(APIView):
             return JsonResponse({
                 "success": False,
                 "message": f"更新用户信息时发生错误: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ============================================
+# 🎯 删除用户接口
+# ============================================
+
+class UserDeleteView(APIView):
+    """删除用户视图"""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="删除用户",
+        description="""
+        逻辑删除用户（仅管理员可以删除）。
+        
+        **功能说明：**
+        - 仅管理员可以删除用户
+        - 执行逻辑删除，不会物理删除数据
+        - 删除后用户将无法登录
+        """,
+        tags=["用户管理"],
+        responses={
+            200: OpenApiResponse(
+                description="删除成功",
+                response=inline_serializer(
+                    name="UserDeleteResponse",
+                    fields={
+                        "success": serializers.BooleanField(),
+                        "message": serializers.CharField()
+                    }
+                )
+            ),
+            401: OpenApiResponse(description="未登录"),
+            403: OpenApiResponse(description="权限不足，仅管理员可以删除用户"),
+            404: OpenApiResponse(description="用户不存在"),
+            500: OpenApiResponse(description="服务器内部错误")
+        },
+        operation_id="delete_user"
+    )
+    def delete(self, request, user_id):
+        """删除用户接口"""
+        try:
+            # 检查认证
+            if not request.user.is_authenticated:
+                return JsonResponse({
+                    "success": False,
+                    "message": "未登录，请先登录获取JWT token"
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # 从TokenUser中获取当前用户ID
+            current_user_id = request.user.id
+            if not current_user_id:
+                return JsonResponse({
+                    "success": False,
+                    "message": "无法从JWT token中获取用户ID"
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # 获取当前登录用户信息（用于权限检查）
+            current_user = UserService.get_user_by_id(current_user_id)
+            if not current_user:
+                return JsonResponse({
+                    "success": False,
+                    "message": "当前用户不存在"
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # 检查权限：只有管理员可以删除用户
+            if current_user.user_type != 0:  # 0 = 管理员
+                return JsonResponse({
+                    "success": False,
+                    "message": "权限不足，仅管理员可以删除用户"
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # 获取要删除的用户
+            user = UserService.get_user_by_id(user_id)
+            if not user:
+                return JsonResponse({
+                    "success": False,
+                    "message": "用户不存在"
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # 不能删除自己
+            if user.id == current_user_id:
+                return JsonResponse({
+                    "success": False,
+                    "message": "不能删除自己的账号"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 执行逻辑删除
+            success, message = UserService.delete_user(user_id)
+            
+            if success:
+                return JsonResponse({
+                    "success": True,
+                    "message": message
+                })
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "message": message
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return JsonResponse({
+                "success": False,
+                "message": f"删除用户时发生错误: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
