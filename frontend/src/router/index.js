@@ -32,6 +32,18 @@ const routes = [
         component: () => import("@/views/Documents.vue"),
         meta: { title: "文档管理" },
       },
+      {
+        path: "courses",
+        name: "Courses",
+        component: () => import("@/views/Courses.vue"),
+        meta: { title: "课程管理" },
+      },
+      {
+        path: "courses/:id",
+        name: "CourseDetail",
+        component: () => import("@/views/CourseDetail.vue"),
+        meta: { title: "课程详情" },
+      },
     ],
   },
 ];

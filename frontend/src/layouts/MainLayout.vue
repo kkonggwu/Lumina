@@ -16,6 +16,11 @@
           <span class="nav-text">智能问答</span>
         </router-link>
 
+        <router-link to="/courses" class="nav-item" :class="{ active: $route.path.startsWith('/courses') }">
+          <span class="nav-icon">📖</span>
+          <span class="nav-text">课程管理</span>
+        </router-link>
+
         <router-link to="/documents" class="nav-item" :class="{ active: $route.path === '/documents' }">
           <span class="nav-icon">📚</span>
           <span class="nav-text">文档管理</span>
