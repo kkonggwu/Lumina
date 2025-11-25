@@ -46,23 +46,9 @@ class RAGService:
             api_base=config["api_base"]
         )
 
-        # 初始化RAG管道
-        self.rag = create_rag_pipeline()
-        
-        # 加载并索引文档，这一步对于检索功能至关重要
-        try:
-            # 加载文档
-            logger.info("开始加载文档...")
-            chunks = self.rag.load_and_process_documents()
-            
-            # 索引文档
-            logger.info("开始索引文档...")
-            self.rag.index_documents(chunks)
-            logger.info("文档索引完成")
-        except Exception as e:
-            logger.error(f"初始化RAG文档索引失败: {str(e)}", exc_info=True)
-            # 记录错误但不中断初始化，让系统可以在部分功能可用的情况下运行
-            raise RuntimeError(f"RAG服务初始化失败，无法建立文档索引: {str(e)}")
+        # 初始化RAG管道（不加载静态文档，只初始化检索模块）
+        # 文档将通过上传接口动态添加到Milvus
+        self.rag = create_rag_pipeline(initialize_with_documents=False)
 
     async def _get_ai_answer_basic(self, question: str) -> str:
         """
@@ -186,14 +172,16 @@ class RAGService:
                        question: str,
                        session_id: Optional[str] = None,
                        course_id: Optional[int] = None,
-                       top_k=3):
+                       top_k=3,
+                       similarity_threshold: Optional[float] = 0.3):
         """
         RAG 问答接口 （SSE传输）
         :param user_id: 用户 id
         :param question: 用户问题
         :param session_id: 会话 id
         :param course_id: 课程 id
-        :param top_k:
+        :param top_k: 返回结果数量
+        :param similarity_threshold: 相似度阈值，低于此值的文档将被过滤（0-1之间，None表示不过滤，默认0.3）
         :return:
         """
 
@@ -207,7 +195,8 @@ class RAGService:
                     question=question,
                     session_id=session_id,
                     course_id=course_id,
-                    top_k=top_k
+                    top_k=top_k,
+                    similarity_threshold=similarity_threshold
                 ),
                 content_type='text/event-stream'
             )
@@ -215,7 +204,16 @@ class RAGService:
             error_msg = str(e)
             return False, f"问答失败: {error_msg}", None
 
-    def _generate_stream(self, user_id, question, session_id, course_id, filters=None, top_k=3):
+    def _generate_stream(
+        self, 
+        user_id, 
+        question, 
+        session_id, 
+        course_id, 
+        filters=None, 
+        top_k=3,
+        similarity_threshold: Optional[float] = 0.3
+    ):
         """
         流式生成回答
         :param user_id: 用户ID
@@ -237,11 +235,14 @@ class RAGService:
             # 用于标记是否已经发送过检索文档
             documents_sent = False
 
-            # 调用RAG服务的流式方法
+            # 调用RAG服务的流式方法（使用相似度阈值过滤）
+            # 默认使用0.3的相似度阈值，过滤掉不相关的文档
+            effective_threshold = similarity_threshold if similarity_threshold is not None else 0.3
             for chunk_data in self.rag.process_query_stream(
                     query=question,
                     filters=filters,
-                    top_k=top_k
+                    top_k=top_k,
+                    similarity_threshold=effective_threshold
             ):
                 # 添加业务相关字段
                 chunk_data.update({
@@ -294,7 +295,7 @@ class RAGService:
         """
         filters = {
             # 基础权限和范围过滤
-            # "course_id": course_id,
+            "course_id": course_id,
             # "user_id": user_id,
 
             # 状态过滤（只查询有效的文档）

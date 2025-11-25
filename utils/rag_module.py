@@ -24,7 +24,6 @@ class RagModule:
         """初始化RAG系统模块"""
         self.config = APIConfig.get_config("qwen")
         self.api_key = DASHSCOPE_API_KEY
-        self.data_processor = None
         self.milvus_manager = None
         self.retrieval_module = None
         self.generation_module = None
@@ -39,28 +38,20 @@ class RagModule:
             "chunk_overlap": 200
         }
 
-        # 检查数据路径和API密钥
-        data_path = self.config["data_path"]
-        # 确保 data_path 是 Path 对象
-        if isinstance(data_path, str):
-            from pathlib import Path
-            data_path = Path(data_path)
-        self.config["data_path"] = data_path
-
-        if not data_path.exists():
-            raise FileNotFoundError(f"数据路径不存在: {data_path}")
+        # 检查API密钥
         if not DASHSCOPE_API_KEY:
-            raise ValueError("请设置 API_KEY 环境变量")
+            raise ValueError("请设置 DASHSCOPE_API_KEY 环境变量")
 
-    def initialize_system(self):
-        """初始化所有模块"""
+    def initialize_system(self, load_static_documents=False):
+        """
+        初始化所有模块
+        
+        Args:
+            load_static_documents: 是否加载静态文档（已废弃，不再加载静态文档）
+        """
         logger.info("开始初始化RAG系统...")
         
-        # 初始化数据处理器
-        self.data_processor = DataProcessor(self.config["data_path"])
-        logger.info("数据处理器初始化完成")
-        
-        # 初始化Milvus管理器
+        # 初始化Milvus管理器（不加载静态文档）
         self.milvus_manager = LangChainMilvusManager()
         logger.info("Milvus管理器初始化完成")
         
@@ -71,83 +62,107 @@ class RagModule:
         )
         logger.info("AI处理器初始化完成")
         
+        # 初始化检索优化模块（使用已有的向量存储）
+        if self.milvus_manager.vector_store:
+            self.retrieval_module = RetrievalOptimization(
+                vectorstore=self.milvus_manager.vector_store,
+                chunks=[]  # 不再预加载chunks，文档通过上传接口动态添加
+            )
+            logger.info("检索优化模块初始化完成")
+        
         self.initialized = True
-        logger.info("RAG系统初始化完成")
+        logger.info("RAG系统初始化完成（不加载静态文档）")
     
     def load_and_process_documents(self) -> List[Document]:
         """
-        加载并处理文档
-        :return: 处理后的文档块列表
+        加载并处理文档（已废弃，不再加载静态文档）
+        文档现在通过上传接口动态添加到Milvus
+        
+        :return: 空列表（不再加载静态文档）
         """
-        if not self.initialized:
-            self.initialize_system()
-        
-        logger.info("开始加载和处理文档...")
-        
-        # 加载文档
-        documents = self.data_processor.load_documents()
-        logger.info(f"加载了 {len(documents)} 个文档")
-        
-        # 分块文档（DataProcessor的chunk_documents方法不接受参数）
-        self.chunks = self.data_processor.chunk_documents()
-        logger.info(f"文档分块完成，共 {len(self.chunks)} 个块")
-        
-        # 增强块的元数据（如果还没有chunk_id）
-        for i, chunk in enumerate(self.chunks):
-            if "chunk_id" not in chunk.metadata:
-                chunk.metadata["chunk_id"] = i
-        
-        return self.chunks
+        logger.warning("load_and_process_documents 方法已废弃，不再加载静态文档")
+        logger.info("文档现在通过上传接口动态添加到Milvus数据库")
+        return []
     
     def index_documents(self, chunks: Optional[List[Document]] = None):
         """
-        将文档块索引到向量数据库
-        :param chunks: 文档块列表，如果为None则使用已加载的块
+        将文档块索引到向量数据库（已废弃，文档现在通过上传接口直接索引）
+        :param chunks: 文档块列表（已废弃）
         """
-        if not self.initialized:
-            self.initialize_system()
-        
-        if chunks is None:
-            if not self.chunks:
-                chunks = self.load_and_process_documents()
-            else:
-                chunks = self.chunks
-        
-        logger.info(f"开始索引 {len(chunks)} 个文档块...")
-        
-        # 将文档块添加到向量存储
-        self.milvus_manager.add_documents(chunks)
-        logger.info("文档索引完成")
-        
-        # 初始化检索优化模块
-        self.retrieval_module = RetrievalOptimization(
-            vectorstore=self.milvus_manager.vector_store,
-            chunks=chunks
-        )
-        logger.info("检索优化模块初始化完成")
+        logger.warning("index_documents 方法已废弃，文档现在通过上传接口直接索引到Milvus")
+        logger.info("请使用 DocumentService.upload_document 方法上传文档")
+        # 如果提供了chunks，仍然可以索引（用于兼容性）
+        if chunks:
+            if not self.initialized:
+                self.initialize_system()
+            logger.info(f"索引 {len(chunks)} 个文档块到Milvus...")
+            self.milvus_manager.add_documents(chunks)
+            logger.info("文档索引完成")
     
-    def retrieve_documents(self, query: str, filters: Optional[Dict[str, Any]] = None, top_k: int = 3) -> List[Document]:
+    def retrieve_documents(
+        self, 
+        query: str, 
+        filters: Optional[Dict[str, Any]] = None, 
+        top_k: int = 3,
+        similarity_threshold: Optional[float] = None
+    ) -> List[Document]:
         """
         根据查询检索相关文档
         :param query: 查询文本
         :param filters: 元数据过滤条件
         :param top_k: 返回结果数量
+        :param similarity_threshold: 相似度阈值，低于此值的文档将被过滤（0-1之间，None表示不过滤）
         :return: 检索到的文档列表
         """
         if not self.retrieval_module:
-            raise ValueError("检索模块未初始化，请先调用index_documents方法")
+            raise ValueError("检索模块未初始化，请先调用initialize_system方法")
         
         logger.info(f"开始检索文档，查询: {query[:50]}...")
         
         if filters:
             # 使用带元数据过滤的检索
-            docs = self.retrieval_module.metadata_filtered_search(query, filters, top_k)
+            docs = self.retrieval_module.metadata_filtered_search(query, filters, top_k, similarity_threshold)
         else:
             # 使用混合检索
-            docs = self.retrieval_module.hybrid_search(query, top_k)
+            docs = self.retrieval_module.hybrid_search(query, top_k, similarity_threshold)
         
         logger.info(f"检索完成，找到 {len(docs)} 个相关文档")
         return docs
+    
+    async def check_document_relevance(self, query: str, retrieved_docs: List[Document]) -> bool:
+        """
+        使用AI判断检索到的文档是否与用户问题相关
+        
+        :param query: 用户问题
+        :param retrieved_docs: 检索到的文档列表
+        :return: True表示相关，False表示不相关
+        """
+        if not retrieved_docs:
+            return False
+        
+        try:
+            # 构建上下文
+            context = self.generation_module._build_context(retrieved_docs, max_length=1000)
+            
+            # 使用AI判断相关性
+            from utils.prompt_template import DOCUMENT_RELEVANCE_CHECK_PROMPT
+            prompt = DOCUMENT_RELEVANCE_CHECK_PROMPT.format(query=query, context=context)
+            
+            # 调用AI进行判断（get_completion是异步方法）
+            result = await self.generation_module.get_completion(prompt, max_tokens=50, temperature=0.1)
+            
+            # 解析结果
+            result_lower = result.strip().lower()
+            # 如果包含"不相关"，则判断为不相关；否则判断为相关
+            is_relevant = "不相关" not in result_lower and ("相关" in result_lower or len(result_lower) > 0)
+            
+            logger.info(f"AI判断文档相关性: {is_relevant} (AI回答: {result.strip()})")
+            return is_relevant
+            
+        except Exception as e:
+            logger.error(f"AI判断文档相关性时出错: {str(e)}", exc_info=True)
+            # 出错时默认认为相关，避免误过滤
+            return True
     
     def generate_response(self, query: str, retrieved_docs: List[Document], use_stream: bool = False) -> str:
         """
@@ -162,7 +177,7 @@ class RagModule:
         
         if not retrieved_docs:
             logger.warning("没有检索到相关文档，将返回空回复")
-            return "抱歉，没有找到相关的文档信息。"
+            return "抱歉，没有搜寻到与您的问题相关的文档信息。"
         
         logger.debug(f"使用 {len(retrieved_docs)} 个文档生成回复")
         
@@ -186,7 +201,7 @@ class RagModule:
         
         if not retrieved_docs:
             logger.warning("没有检索到相关文档，将返回空回复")
-            yield "抱歉，没有找到相关的文档信息。"
+            yield "抱歉，没有搜寻到与您的问题相关的文档信息。"
             return
         
         logger.debug(f"使用 {len(retrieved_docs)} 个文档流式生成回复")
@@ -241,22 +256,46 @@ class RagModule:
                 "error": str(e)
             }
     
-    def process_query_stream(self, query: str, filters: Optional[Dict[str, Any]] = None, 
-                            top_k: int = 3):
+    def process_query_stream(
+        self, 
+        query: str, 
+        filters: Optional[Dict[str, Any]] = None, 
+        top_k: int = 3,
+        similarity_threshold: Optional[float] = 0.3
+    ):
         """
         流式处理RAG查询流程（返回生成器）
         :param query: 查询文本
         :param filters: 元数据过滤条件
         :param top_k: 返回结果数量
+        :param similarity_threshold: 相似度阈值，低于此值的文档将被过滤（0-1之间，None表示不过滤，默认0.3）
         :return: 生成器，每次yield一个包含查询结果的字典片段
         """
         try:
             logger.info(f"流式处理RAG查询: {query[:50]}...")
             
-            # 1. 检索相关文档
-            retrieved_docs = self.retrieve_documents(query, filters, top_k)
+            # 1. 检索相关文档（应用相似度阈值过滤）
+            retrieved_docs = self.retrieve_documents(query, filters, top_k, similarity_threshold)
             
-            # 2. 流式生成回复
+            # 2. 如果过滤后没有文档，返回提示信息
+            if not retrieved_docs:
+                logger.warning("相似度过滤后没有相关文档，返回无相关文档提示")
+                no_relevant_docs_response = "抱歉，没有搜寻到与您的问题相关的文档信息。"
+                yield {
+                    "query": query,
+                    "chunk": no_relevant_docs_response,
+                    "retrieved_documents": [],
+                    "status": "streaming"
+                }
+                yield {
+                    "query": query,
+                    "response": no_relevant_docs_response,
+                    "retrieved_documents": [],
+                    "status": "completed"
+                }
+                return
+            
+            # 3. 流式生成回复
             full_response = ""
             for chunk in self.generate_response_stream(query, retrieved_docs):
                 full_response += chunk
@@ -270,7 +309,7 @@ class RagModule:
                     "status": "streaming"
                 }
             
-            # 3. 发送完成信号
+            # 4. 发送完成信号
             yield {
                 "query": query,
                 "response": full_response,
@@ -350,12 +389,14 @@ class RagModule:
 
 
 # 便捷函数
-def create_rag_pipeline(data_path=None, chunk_size=1000, chunk_overlap=200) -> RagModule:
+def create_rag_pipeline(data_path=None, chunk_size=1000, chunk_overlap=200, initialize_with_documents=True) -> RagModule:
     """
     创建并初始化RAG管道
-    :param data_path: 数据路径（可选）
+    
+    :param data_path: 数据路径（可选，已废弃，不再加载静态文档）
     :param chunk_size: 块大小
     :param chunk_overlap: 块重叠大小
+    :param initialize_with_documents: 是否初始化时加载文档（已废弃，始终为False）
     :return: 初始化的RAG模块
     """
     rag = RagModule()
@@ -364,9 +405,9 @@ def create_rag_pipeline(data_path=None, chunk_size=1000, chunk_overlap=200) -> R
         "chunk_overlap": chunk_overlap
     })
     
-    if data_path:
-        from pathlib import Path
-        rag.config["data_path"] = Path(data_path)
+    # 不再使用data_path加载静态文档
+    # 文档现在通过上传接口动态添加到Milvus
     
-    rag.initialize_system()
+    # 初始化系统（不加载静态文档）
+    rag.initialize_system(load_static_documents=False)
     return rag
