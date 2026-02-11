@@ -10,14 +10,8 @@ import operator
 from datetime import datetime
 from typing import TypedDict, Optional, Literal, Annotated, Dict
 
-from emoji import analyze
-from humanfriendly.testing import retry
 from langgraph.constants import END
 from langgraph.graph import StateGraph
-from llama_cloud import Retriever
-from pymilvus.model.sparse.bm25 import Analyzer
-from sympy.codegen.cutils import render_as_source_file
-from typer.cli import state
 
 from agent.analyzer_agent import AnalyzerAgent
 from agent.reporter_agent import ReporterAgent
@@ -32,21 +26,23 @@ class ScoringState(TypedDict):
     student_answer: str
     course_id: int
     question_id: int
+    assignment_id: int
 
     # 检索阶段的结果 (retrieve)
     standard_answer: Optional[str]
     reference_materials: Optional[list]
+    # 标准答案的缓存关键点（由 RetrieverAgent 从 DB 取出，教师预分析后存入）
+    answer_keypoints: Optional[list]
 
     # 分析阶段结果 (analyzer)
-    answer_keypoints: Optional[str]
-    student_keypoints: Optional[str]
-    missing_keypoints: Optional[str]
-    redundant_keypoints: Optional[str]
+    student_keypoints: Optional[list]
+    missing_keypoints: Optional[list]
+    redundant_keypoints: Optional[list]
 
     # 评分阶段结果 (score)
     score: Optional[float]
     max_score: Optional[float]
-    scoring_details: Optional[str]
+    scoring_details: Optional[dict]
 
     # 生成报告阶段结果 (report)
     report: Optional[dict]
@@ -165,22 +161,29 @@ class CoordinatorAgent:
     async def _node_retrieve(self, state: ScoringState) -> Dict:
         """
         检索节点
-        获取所需的标准答案或参考资料
+        1. 从 DB 获取标准答案 + 缓存的关键点（通过 assignment_id + question_id）
+        2. （可选）从 Milvus 检索课程文档作为补充参考
         :param state:
         :return:
         """
-        logger.info(f"开始检索题目:{state['question_id']}相关资料")
+        logger.info(f"开始检索题目:{state['question_id']}相关资料 (作业ID:{state['assignment_id']})")
         try:
             # 使用 retriever agent 检索相关资料
             result = await self.retriever.retrieve(
-                question = state['question'],
-                course_id = state['course_id'],
-                question_id = state['question_id']
+                assignment_id=state['assignment_id'],
+                question_id=state['question_id'],
+                course_id=state['course_id'],
+                question=state['question']
             )
-            logger.info(f"成功检索相关资料，获得 {len(result.get('materials',[]))} 条参考资料")
+            logger.info(
+                f"检索完成：标准答案{'已获取' if result.get('standard_answer') else '未获取'}，"
+                f"缓存关键点 {len(result.get('answer_keypoints', []))} 个，"
+                f"参考资料 {len(result.get('materials', []))} 条"
+            )
 
             return {
                 "standard_answer": result.get("standard_answer"),
+                "answer_keypoints": result.get("answer_keypoints", []),
                 "reference_materials": result.get("materials", []),
                 "status": "retrieved"
             }
@@ -194,23 +197,42 @@ class CoordinatorAgent:
     async def _node_analyze(self, state: ScoringState) -> Dict:
         """
         分析节点
+        1. 检查是否已有缓存的标准答案关键点（由 RetrieverAgent 从 DB 取出）
+        2. 如果没有，先调用 analyze_standard_answer 临时生成
+        3. 调用 analyze_student_answer 提取学生关键点并与标准关键点对比
         :param state:
         :return:
         """
-        # TODO 可以根据 max_analyze_retry_count 字段判断是否超过最大分析次数
         logger.info(f"开始分析题目:{state['question_id']}")
         try:
-            result = await self.analyzer.analyze(
-                question = state['question'],
-                standard_answer = state['standard_answer'],
-                student_answer = state['student_answer'],
-                reference_materials = state['reference_materials']
+            # 获取标准答案关键点（优先使用 RetrieverAgent 提供的缓存）
+            standard_keypoints = state.get("answer_keypoints") or []
+
+            # 如果没有缓存的关键点，临时分析标准答案生成
+            if not standard_keypoints:
+                logger.info("未找到缓存的标准答案关键点，临时分析生成")
+                std_result = await self.analyzer.analyze_standard_answer(
+                    question=state['question'],
+                    standard_answer=state['standard_answer']
+                )
+                standard_keypoints = std_result.get("keypoints", [])
+
+            # 调用场景B：分析学生答案 + 与标准关键点对比
+            result = await self.analyzer.analyze_student_answer(
+                question=state['question'],
+                student_answer=state['student_answer'],
+                standard_keypoints=standard_keypoints,
+                reference_materials=state.get('reference_materials')
             )
-            keypoint_count = len(result.get('standard_keypoints',[]))
-            logger.info(f"成功分析，找到 f{keypoint_count} 个标准关键点")
+
+            logger.info(
+                f"分析完成：标准关键点 {len(standard_keypoints)} 个，"
+                f"匹配 {len(result.get('matching_keypoints', []))} 个，"
+                f"缺失 {len(result.get('missing_keypoints', []))} 个"
+            )
 
             return {
-                "answer_keypoints": result.get('standard_keypoints', []),
+                "answer_keypoints": standard_keypoints,
                 "student_keypoints": result.get('student_keypoints', []),
                 "missing_keypoints": result.get('missing_keypoints', []),
                 "redundant_keypoints": result.get('redundant_keypoints', []),
@@ -339,47 +361,57 @@ class CoordinatorAgent:
         :return:
         """
         retry_count = state.get("retry_count", 0) + 1
-        max_retries = state.get("max_retries",3)
-        if retry_count < max_retries:
-            logger.info(f"开始第 {retry_count} 次重新评分")
-            try:
-                previous_scores = [h["score"] for h in state.get("scoring_history", [])]
-                result = await self.scorer.score(
-                    max_score=state["max_score"],
-                    missing_points=state["missing_keypoints"],
-                    redundant_points=state["redundant_keypoints"],
-                    student_keypoints=state["student_keypoints"],
-                    standard_keypoints=state["answer_keypoints"],
-                    strict_mode=True,
-                    previous_scores=previous_scores
-                )
-                score = result.get("score", 0)
-                confidence = result.get("confidence", 0.5)
+        max_retries = state.get("max_retries", 3)
 
-                logger.info(f"重新评分完成，得分：{score}/{state['max_score']},置信度：{confidence}")
+        # 超过最大重试次数，直接转入错误处理
+        if retry_count >= max_retries:
+            logger.warning(f"重新评分已达最大重试次数 ({retry_count}/{max_retries})，停止重试")
+            return {
+                "retry_count": retry_count,
+                "error_message": f"重新评分超过最大重试次数({max_retries})",
+                "status": "error"
+            }
 
-                scoring_record = {
-                    "attempt": retry_count,
-                    "score": score,
-                    "confidence": confidence,
-                    "timestamp": datetime.now().isoformat(),
-                    "details": result.get("details", {}),
-                    "is_rescore": True # 标记为重新评分
-                }
+        logger.info(f"开始第 {retry_count} 次重新评分")
+        try:
+            previous_scores = [h["score"] for h in state.get("scoring_history", [])]
+            result = await self.scorer.score(
+                max_score=state["max_score"],
+                missing_points=state["missing_keypoints"],
+                redundant_points=state["redundant_keypoints"],
+                student_keypoints=state["student_keypoints"],
+                standard_keypoints=state["answer_keypoints"],
+                strict_mode=True,
+                previous_scores=previous_scores
+            )
+            score = result.get("score", 0)
+            confidence = result.get("confidence", 0.5)
 
-                return{
-                    "score": score,
-                    "confidence_score": confidence,
-                    "scoring_details": result.get("details", {}),
-                    "scoring_history": [scoring_record],
-                    "status": "scored"
-                }
-            except Exception as e:
-                logger.error(f"重新评分失败：{str(e)}")
-                return {
-                    "error_message": f"重新评分失败：{str(e)}",
-                    "status": "error"
-                }
+            logger.info(f"重新评分完成，得分：{score}/{state['max_score']},置信度：{confidence}")
+
+            scoring_record = {
+                "attempt": retry_count,
+                "score": score,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat(),
+                "details": result.get("details", {}),
+                "is_rescore": True
+            }
+
+            return {
+                "score": score,
+                "confidence_score": confidence,
+                "scoring_details": result.get("details", {}),
+                "scoring_history": [scoring_record],
+                "retry_count": retry_count,
+                "status": "scored"
+            }
+        except Exception as e:
+            logger.error(f"重新评分失败：{str(e)}")
+            return {
+                "error_message": f"重新评分失败：{str(e)}",
+                "status": "error"
+            }
 
     async def _node_report(self, state: ScoringState) -> Dict:
         """
@@ -464,7 +496,7 @@ class CoordinatorAgent:
 
         keypoint_count = len(state.get("answer_keypoints", []))
         analyze_retry_count = state.get("analyze_retry_count", 0)
-        max_analyze_retry_count = state.get("analyze_retry_count", 3)
+        max_analyze_retry_count = state.get("max_analyze_retry_count", 3)
 
         if keypoint_count < 3 and analyze_retry_count < max_analyze_retry_count:
             logger.warning(f"关键点过少({keypoint_count} < 3)，重新分析")

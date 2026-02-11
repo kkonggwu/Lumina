@@ -30,9 +30,9 @@ class AIHandler:
     def __init__(self, api_key: str, api_base: str, provider: str = "qwen"):
         """
         初始化API处理器
-        :param api_key:
-        :param api_base:
-        :param provider:
+        :param api_key: API密钥
+        :param api_base: API基础地址
+        :param provider: 模型提供商 (qwen, openai, deepseek)
         """
         if not api_key:
             raise ValueError("API密钥不能为空")
@@ -59,6 +59,26 @@ class AIHandler:
         self.prompt_template = PromptTemplate.from_template(CHAT_PROMPT_USING_CONTEXT)
 
         logger.info(f"初始化AI处理器: {provider}")
+
+    @classmethod
+    def create_default(cls, provider: str = "qwen") -> "AIHandler":
+        """
+        使用默认配置创建 AIHandler 实例（推荐 Agent 层使用）
+        自动从环境变量读取 api_key，从 APIConfig 推导 api_base
+        :param provider: 模型提供商 (qwen, openai, deepseek)，默认 qwen
+        :return: AIHandler 实例
+        """
+        from config.config import DASHSCOPE_API_KEY
+        config = APIConfig.get_config(provider)
+
+        if not DASHSCOPE_API_KEY:
+            raise ValueError("DASHSCOPE_API_KEY 环境变量未设置，请在 .env 文件中配置")
+
+        return cls(
+            api_key=DASHSCOPE_API_KEY,
+            api_base=config["api_base"],
+            provider=provider
+        )
 
     async def chat_basic(self, query: str, prompt_template: str) -> str:
         """
