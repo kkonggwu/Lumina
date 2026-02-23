@@ -8,8 +8,9 @@
 """
 import operator
 from datetime import datetime
-from typing import TypedDict, Optional, Literal, Annotated, Dict
+from typing import TypedDict, Optional, Literal, Annotated, Dict, List
 
+from asgiref.sync import sync_to_async
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 
@@ -72,8 +73,12 @@ class CoordinatorAgent:
     """
     协调者，作为 Agent 系统的头，分配任务与节点
     """
-    def __init__(self):
-        self.retriever = RetrieverAgent()
+    def __init__(self, enable_milvus: bool = None):
+        if enable_milvus is None:
+            import os
+            enable_milvus = os.getenv('ENABLE_MILVUS', 'false').lower() == 'true'
+
+        self.retriever = RetrieverAgent(enable_milvus=enable_milvus)
         self.analyzer = AnalyzerAgent()
         self.scorer = ScorerAgent()
         self.reporter = ReporterAgent()
@@ -236,6 +241,7 @@ class CoordinatorAgent:
                 "student_keypoints": result.get('student_keypoints', []),
                 "missing_keypoints": result.get('missing_keypoints', []),
                 "redundant_keypoints": result.get('redundant_keypoints', []),
+                "analyze_retry_count": state.get("analyze_retry_count", 0) + 1,
                 "status": "analyzed"
             }
         except Exception as e:
@@ -279,7 +285,7 @@ class CoordinatorAgent:
             return {
                 "score": score,
                 "confidence_score": confidence,
-                "details": result.get("details", {}),
+                "scoring_details": result.get("details", {}),
                 "scoring_history": [scoring_history],
                 "status": "scored"
             }
@@ -315,23 +321,25 @@ class CoordinatorAgent:
             needs_rescore = True
             reasons.append(f"置信度过低：{confidence:.2f} < 0.6")
 
-        # 2. 极端分数检查，分数差距大需要人工审核
-        if score < 50 or score > 95:
+        # 2. 极端分数检查（基于得分率），分数差距大需要人工审核
+        max_score = state.get("max_score", 100)
+        score_percentage = (score / max_score * 100) if max_score > 0 else 0
+        if score_percentage < 20 or score_percentage > 95:
             needs_human = True
-            reasons.append(f"分数较高或较低：{score}")
+            reasons.append(f"得分率极端：{score_percentage:.1f}%（{score}/{max_score}）")
 
         # 3. 检查学生采分点
         if student_keypoints_count < 2:
             needs_rescore = True
             reasons.append(f"学生采分点较少：{student_keypoints_count}")
-        # 4. (重新评分阶段) 评分波动过大
+        # 4. (重新评分阶段) 评分波动过大（基于得分率差异）
         history = state.get("scoring_history", [])
         if len(history) > 1:
             prev_score = history[-2]["score"]
-            score_diff = abs(score - prev_score)
-            if score_diff > 20:
+            score_diff_pct = abs(score - prev_score) / max_score * 100 if max_score > 0 else 0
+            if score_diff_pct > 20:
                 needs_human = True
-                reasons.append(f"评分波动过大(前次:{prev_score},本次:{score},差异：{score_diff}")
+                reasons.append(f"评分波动过大(前次:{prev_score},本次:{score},差异：{score_diff_pct:.1f}%)")
 
         if needs_human:
             logger.warning(f"需要人工审核: {', '.join(reasons)}")
@@ -341,18 +349,23 @@ class CoordinatorAgent:
             logger.info("质量检测通过")
 
         return {
-            "needs_human_review": needs_human,
+            "needs_human_feedback": needs_human,
             "status": "reviewing" if (needs_rescore or needs_human) else "scored"
         }
 
     async def _node_human_review(self, state: ScoringState) -> Dict:
         """
         人工审核节点
+        TODO: 后续对接真正的人工审核机制（如 WebSocket 通知 + 等待教师操作）
+        当前默认行为：自动通过，直接进入报告生成
         :param state:
         :return:
         """
-        # TODO 没想好怎么实现，先空着
-        pass
+        logger.info("进入人工审核节点（当前为自动通过模式）")
+        return {
+            "human_feedback": "自动通过",
+            "status": "reviewed",
+        }
 
     async def _node_rescore(self, state: ScoringState) -> Dict:
         """
@@ -430,10 +443,10 @@ class CoordinatorAgent:
                 max_score = state["max_score"],
                 missing_keypoints = state["missing_keypoints"],
                 redundant_keypoints = state["redundant_keypoints"],
-                scoring_history = state["scoring_history"],
-                reference_materials = state["reference_materials"],
-                scoring_details = state["scoring_details"],
-                human_feedback = state["human_feedback"],
+                scoring_history = state.get("scoring_history", []),
+                reference_materials = state.get("reference_materials", []),
+                scoring_details = state.get("scoring_details", {}),
+                human_feedback = state.get("human_feedback"),
             )
             logger.info(f"报告生成完毕，最终得分为：{result['score']}/{state['max_score']}")
             return {
@@ -534,11 +547,8 @@ class CoordinatorAgent:
             return "human_review"
         # 3. 如果需要重新评分，进入重新评分
         if status == "reviewing":
-            logger.info("质量检测到需要重新评分")
-            confidence = state.get("confidence_score", 0)
-            if confidence < 0.6:
-                logger.info(f"置信度过低: ({confidence:.2f})，需要重新评分")
-                return "rescore"
+            logger.info("质量检测到需要重新评分，进入重新评分")
+            return "rescore"
         # 4. 质量合格，进入报告节点
         logger.info(f"质量检测通过，进入报告生成")
         return "report"
@@ -549,7 +559,7 @@ class CoordinatorAgent:
         :param state:
         :return:
         """
-        human_feedback = state.get("human_feedback", "")
+        human_feedback = state.get("human_feedback") or ""
         logger.info(f"人工审核反馈：{human_feedback}")
 
         if "重新分析" in human_feedback:
@@ -561,3 +571,239 @@ class CoordinatorAgent:
         else:
             logger.info("人工审核通过，进入报告生成")
             return "report"
+
+    # ============================================================
+    # 对外入口方法
+    # ============================================================
+
+    async def grade(
+            self,
+            question: str,
+            student_answer: str,
+            course_id: int,
+            question_id: int,
+            assignment_id: int,
+            max_score: float,
+    ) -> dict:
+        """
+        单题评分入口，供 Service 层 / API 视图调用
+        :param question: 题目内容
+        :param student_answer: 学生答案
+        :param course_id: 课程 ID
+        :param question_id: 题目 ID（Assignment.questions 中的 id）
+        :param assignment_id: 作业 ID
+        :param max_score: 该题满分
+        :return: 格式化后的评分结果
+        """
+        logger.info(
+            f"开始判题：作业ID={assignment_id}, 题目ID={question_id}, 满分={max_score}"
+        )
+
+        initial_state = self._build_initial_state(
+            question=question,
+            student_answer=student_answer,
+            course_id=course_id,
+            question_id=question_id,
+            assignment_id=assignment_id,
+            max_score=max_score,
+        )
+
+        try:
+            final_state = await self.compiled_graph.ainvoke(initial_state)
+            result = self._format_result(final_state)
+            logger.info(
+                f"判题完成：题目ID={question_id}, "
+                f"状态={result['status']}, 得分={result.get('score')}/{max_score}"
+            )
+            return result
+        except Exception as e:
+            logger.error(f"判题流程异常：{str(e)}")
+            return {
+                "status": "error",
+                "error_message": f"判题流程异常：{str(e)}",
+                "score": None,
+                "max_score": max_score,
+                "report": None,
+            }
+
+    async def grade_submission(self, submission_id: int) -> dict:
+        """
+        批量判题入口：对某次提交中的所有题目进行评分，并将结果持久化
+        :param submission_id: 提交记录 ID
+        :return: 包含所有题目评分结果的汇总字典
+        """
+        logger.info(f"开始批量判题：提交ID={submission_id}")
+
+        from course.models import Submission
+        try:
+            submission = await sync_to_async(
+                lambda: Submission.objects.select_related(
+                    'assignment', 'assignment__course'
+                ).get(id=submission_id, is_deleted=False)
+            )()
+        except Submission.DoesNotExist:
+            logger.error(f"提交记录不存在：ID={submission_id}")
+            return {"status": "error", "error_message": f"提交记录不存在：ID={submission_id}"}
+
+        assignment = submission.assignment
+        course_id = assignment.course_id
+        questions = assignment.questions or []
+        raw_answers = submission.answers or {}
+
+        # 兼容 dict 格式 {"qid": "answer"} 和 list 格式 [{"question_id": ..., "answer": ...}]
+        if isinstance(raw_answers, dict):
+            answer_map = {str(k): v for k, v in raw_answers.items()}
+        elif isinstance(raw_answers, list):
+            answer_map = {str(a["question_id"]): a.get("answer", "") for a in raw_answers}
+        else:
+            answer_map = {}
+
+        results = []
+        total_score = 0.0
+
+        for q in questions:
+            q_id = q.get("id")
+            q_content = q.get("content", "")
+            q_max_score = float(q.get("score", 0))
+            student_answer = answer_map.get(str(q_id), "")
+
+            if not student_answer.strip():
+                results.append({
+                    "question_id": q_id,
+                    "status": "completed",
+                    "score": 0.0,
+                    "max_score": q_max_score,
+                    "report": {
+                        "score": 0.0,
+                        "max_score": q_max_score,
+                        "feedback": "未作答",
+                        "summary": {"score": 0.0, "max_score": q_max_score, "grade_level": "不及格"},
+                    },
+                })
+                continue
+
+            result = await self.grade(
+                question=q_content,
+                student_answer=student_answer,
+                course_id=course_id,
+                question_id=q_id,
+                assignment_id=assignment.id,
+                max_score=q_max_score,
+            )
+            result["question_id"] = q_id
+            results.append(result)
+            total_score += result.get("score", 0) or 0
+
+        total_score = round(total_score, 2)
+        overall_comment = self._build_overall_comment(results, questions)
+
+        await sync_to_async(self._save_grade)(
+            submission=submission,
+            total_score=total_score,
+            grading_rubric=results,
+            overall_comment=overall_comment,
+        )
+
+        status = "completed" if all(r.get("status") == "completed" for r in results) else "partial"
+        logger.info(f"批量判题完成：提交ID={submission_id}, 总分={total_score}, 状态={status}")
+
+        return {
+            "submission_id": submission_id,
+            "total_score": total_score,
+            "question_results": results,
+            "overall_comment": overall_comment,
+            "status": status,
+        }
+
+    # ============================================================
+    # 辅助方法
+    # ============================================================
+
+    @staticmethod
+    def _build_initial_state(
+            question: str,
+            student_answer: str,
+            course_id: int,
+            question_id: int,
+            assignment_id: int,
+            max_score: float,
+    ) -> ScoringState:
+        """构造 LangGraph 流程的初始 State"""
+        return {
+            "question": question,
+            "student_answer": student_answer,
+            "course_id": course_id,
+            "question_id": question_id,
+            "assignment_id": assignment_id,
+            "max_score": max_score,
+            "standard_answer": None,
+            "reference_materials": None,
+            "answer_keypoints": None,
+            "student_keypoints": None,
+            "missing_keypoints": None,
+            "redundant_keypoints": None,
+            "score": None,
+            "scoring_details": None,
+            "report": None,
+            "status": "pending",
+            "error_message": None,
+            "retry_count": 0,
+            "max_retries": 3,
+            "analyze_retry_count": 0,
+            "max_analyze_retry_count": 3,
+            "scoring_history": [],
+            "human_feedback": None,
+            "needs_human_feedback": False,
+            "confidence_score": None,
+        }
+
+    @staticmethod
+    def _format_result(final_state: dict) -> dict:
+        """将 LangGraph 最终 State 清洗为对外返回的标准格式"""
+        return {
+            "status": final_state.get("status", "error"),
+            "score": final_state.get("score"),
+            "max_score": final_state.get("max_score"),
+            "confidence": final_state.get("confidence_score"),
+            "report": final_state.get("report"),
+            "scoring_details": final_state.get("scoring_details"),
+            "scoring_history": final_state.get("scoring_history", []),
+            "error_message": final_state.get("error_message"),
+        }
+
+    @staticmethod
+    def _save_grade(submission, total_score: float, grading_rubric: list, overall_comment: str):
+        """将评分结果持久化到 Grade 表，并更新 Submission 状态"""
+        from course.models import Grade
+        from django.utils import timezone
+
+        Grade.objects.update_or_create(
+            submission=submission,
+            defaults={
+                "grading_rubric": grading_rubric,
+                "overall_comment": overall_comment,
+                "is_deleted": False,
+            }
+        )
+
+        submission.total_score = total_score
+        submission.submission_status = 2  # 已批改
+        submission.graded_at = timezone.now()
+        submission.save(update_fields=["total_score", "submission_status", "graded_at", "updated_at"])
+
+    @staticmethod
+    def _build_overall_comment(results: List[dict], questions: list) -> str:
+        """根据各题评分结果拼接汇总评语"""
+        total = len(results)
+        completed = sum(1 for r in results if r.get("status") == "completed")
+        error_count = sum(1 for r in results if r.get("status") == "error")
+        total_score = sum(r.get("score", 0) or 0 for r in results)
+        total_max = sum(float(q.get("score", 0)) for q in questions)
+
+        percentage = round(total_score / total_max * 100, 1) if total_max > 0 else 0
+
+        comment = f"本次作业共 {total} 题，AI 评分完成 {completed} 题"
+        if error_count:
+            comment += f"，{error_count} 题评分异常"
+        comment += f"。总分 {round(total_score, 2)}/{round(total_max, 2)}（{percentage}%）。"
+        return comment

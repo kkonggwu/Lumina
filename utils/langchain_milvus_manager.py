@@ -187,12 +187,23 @@ class LangChainMilvusManager:
         doc_ids = self.vector_store.add_documents(docs)
         return doc_ids
 
-    def search_similar(self, query: str, limit: int = 5):
-        """使用LangChain检索"""
+    def search_similar(self, query: str, limit: int = 5, filter_expr: str = None):
+        """
+        使用LangChain检索相似文档
+        :param query: 查询文本
+        :param limit: 返回结果数量
+        :param filter_expr: Milvus 过滤表达式（可选），例如 'course_id == 1'
+                            在向量检索时直接由 Milvus 执行过滤，效率高于 Python 层后过滤
+        """
+        # 构建检索参数
+        search_kwargs = {"k": limit}
+        if filter_expr:
+            search_kwargs["expr"] = filter_expr
+
         # 创建标准检索器
         retriever = self.vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": limit}
+            search_kwargs=search_kwargs
         )
 
         # 检索文档
@@ -202,9 +213,9 @@ class LangChainMilvusManager:
         results = []
         for doc in docs:
             results.append({
-                'course': doc.page_content,
+                'content': doc.page_content,
                 'metadata': doc.metadata,
-                'score': getattr(doc, 'score', 0.0)  # 有些版本可能有分数
+                'score': getattr(doc, 'score', 0.0)
             })
 
         return results
