@@ -20,6 +20,12 @@ class AssignmentService:
     @staticmethod
     def _check_teacher_permission(user, assignment: Assignment) -> Tuple[bool, str]:
         """检查用户是否为该作业所属课程的教师"""
+        # 兼容 JWT TokenUser，对应的真实用户信息从 UserModel 中获取
+        if not isinstance(user, UserModel):
+            try:
+                user = UserModel.objects.get(id=getattr(user, "id", None), is_deleted=UserModel.NOT_DELETED)
+            except UserModel.DoesNotExist:
+                return False, "用户不存在或未登录", ""
         if user.user_type == UserModel.ADMIN:
             return True, ""
         if user.user_type != UserModel.TEACHER:
@@ -37,6 +43,13 @@ class AssignmentService:
         :return: (success, message, assignment)
         """
         try:
+            # 将 JWT TokenUser 转换为真实的 UserModel
+            if not isinstance(teacher, UserModel):
+                try:
+                    teacher = UserModel.objects.get(id=getattr(teacher, "id", None), is_deleted=UserModel.NOT_DELETED)
+                except UserModel.DoesNotExist:
+                    return False, "用户不存在或未登录", None
+
             if teacher.user_type not in [UserModel.ADMIN, UserModel.TEACHER]:
                 return False, "仅教师和管理员可以创建作业", None
 
@@ -200,26 +213,38 @@ class AssignmentService:
             return False, "作业不存在", None
 
     @staticmethod
-    def list_assignments(course_id: int, user) -> Tuple[bool, str, List[Assignment]]:
+    def list_assignments(course_id, user) -> Tuple[bool, str, List[Assignment]]:
         """
-        获取课程下的作业列表
-        教师：可看所有状态；学生：只能看已发布
-        :param course_id: 课程 ID
+        获取作业列表
+        当提供 course_id 时，返回该课程下的作业；否则返回用户可见的全部作业
+        教师/管理员：可看所有状态；学生：只能看已发布
+        :param course_id: 课程 ID（可选）
         :param user: 当前登录用户
         :return: (success, message, assignments)
         """
         try:
-            try:
-                Course.objects.get(id=course_id, is_deleted=False)
-            except Course.DoesNotExist:
-                return False, "课程不存在", []
+            # 兼容 JWT TokenUser，对应的真实用户信息从 UserModel 中获取
+            if not isinstance(user, UserModel):
+                try:
+                    user = UserModel.objects.get(id=getattr(user, "id", None), is_deleted=UserModel.NOT_DELETED)
+                except UserModel.DoesNotExist:
+                    return False, "用户不存在或未登录", []
 
             queryset = Assignment.objects.select_related('course', 'teacher').filter(
-                course_id=course_id, is_deleted=False
+                is_deleted=False
             )
+
+            if course_id is not None:
+                try:
+                    Course.objects.get(id=course_id, is_deleted=False)
+                except Course.DoesNotExist:
+                    return False, "课程不存在", []
+                queryset = queryset.filter(course_id=course_id)
 
             if user.user_type == UserModel.STUDENT:
                 queryset = queryset.filter(assignment_status=1)
+            elif user.user_type == UserModel.TEACHER:
+                queryset = queryset.filter(teacher=user)
 
             assignments = list(queryset.order_by('-created_at'))
             return True, "获取成功", assignments

@@ -51,11 +51,8 @@ class AssignmentListView(APIView):
     def get(self, request):
         course_id = request.query_params.get("course_id")
 
-        if not course_id:
-            return ApiResponse.error(message="缺少 course_id 参数")
-
         success, message, assignments = AssignmentService.list_assignments(
-            course_id=int(course_id),
+            course_id=int(course_id) if course_id else None,
             user=request.user
         )
         if not success:

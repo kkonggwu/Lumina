@@ -21,6 +21,11 @@
           <span class="nav-text">课程管理</span>
         </router-link>
 
+        <router-link to="/assignments" class="nav-item" :class="{ active: $route.path.startsWith('/assignments') }">
+          <span class="nav-icon">📝</span>
+          <span class="nav-text">作业管理</span>
+        </router-link>
+
         <router-link to="/documents" class="nav-item" :class="{ active: $route.path === '/documents' }">
           <span class="nav-icon">📚</span>
           <span class="nav-text">文档管理</span>

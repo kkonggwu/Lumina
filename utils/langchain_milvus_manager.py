@@ -31,58 +31,56 @@ class LangChainMilvusManager:
         self.host = host
         self.port = port
 
-        # 使用LangChain的嵌入模型
-        # 修复PyTorch设备配置问题：直接使用SentenceTransformer，然后包装为LangChain兼容格式
+        # 使用LangChain的嵌入模型（本地 SentenceTransformers / HuggingFace）
+        # 这里会优先尝试直接加载 SentenceTransformer，失败时回退到 HuggingFaceEmbeddings
         try:
             import os
-            # 确保使用CPU，避免GPU相关问题
-            os.environ.setdefault('CUDA_VISIBLE_DEVICES', '')
-            
+            # 确保使用 CPU，避免 GPU 相关问题
+            os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
             logger.info(f"正在初始化嵌入模型: {embedding_model}")
-            
-            # 方法1: 先使用SentenceTransformer直接加载，确保模型正确初始化
+
+            # 方法1: 先使用 SentenceTransformer 直接加载，确保模型正确初始化
             from sentence_transformers import SentenceTransformer
-            
+
             try:
-                # 直接使用SentenceTransformer加载模型
-                logger.info("使用SentenceTransformer直接加载模型...")
-                st_model = SentenceTransformer(embedding_model, device='cpu')
-                
+                logger.info("使用 SentenceTransformer 直接加载模型...")
+                st_model = SentenceTransformer(embedding_model, device="cpu")
+
                 # 测试模型是否正常工作
                 test_embedding = st_model.encode("test", convert_to_numpy=True)
                 logger.info(f"模型加载成功，测试向量维度: {len(test_embedding)}")
-                
-                # 创建自定义的嵌入函数，包装SentenceTransformer
-                def embed_function(texts):
-                    if isinstance(texts, str):
-                        texts = [texts]
-                    embeddings = st_model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
-                    return embeddings.tolist() if isinstance(embeddings, list) else [embeddings.tolist()]
-                
-                # 使用HuggingFaceEmbeddings，但传入已加载的模型
-                # 注意：HuggingFaceEmbeddings内部会尝试加载模型，我们需要避免重复加载
-                # 所以直接使用自定义的嵌入函数
+
                 from langchain_core.embeddings import Embeddings
-                
+
                 class CustomEmbeddings(Embeddings):
                     def embed_documents(self, texts):
-                        return st_model.encode(texts, convert_to_numpy=True).tolist()
-                    
+                        return st_model.encode(
+                            texts, convert_to_numpy=True, show_progress_bar=False
+                        ).tolist()
+
                     def embed_query(self, text):
-                        return st_model.encode([text], convert_to_numpy=True)[0].tolist()
-                
+                        return (
+                            st_model.encode(
+                                [text], convert_to_numpy=True, show_progress_bar=False
+                            )[0].tolist()
+                        )
+
                 self.embeddings = CustomEmbeddings()
                 logger.info("使用自定义嵌入类成功初始化")
-                
+
             except Exception as st_e:
-                logger.warning(f"使用SentenceTransformer直接加载失败: {str(st_e)}，尝试使用HuggingFaceEmbeddings...")
-                # 方法2: 如果直接加载失败，使用HuggingFaceEmbeddings
+                logger.warning(
+                    f"使用 SentenceTransformer 直接加载失败: {str(st_e)}，"
+                    f"尝试使用 HuggingFaceEmbeddings..."
+                )
+                # 方法2: 如果直接加载失败，使用 HuggingFaceEmbeddings
                 self.embeddings = HuggingFaceEmbeddings(
                     model_name=embedding_model,
-                    model_kwargs={'device': 'cpu'}
+                    model_kwargs={"device": "cpu"},
                 )
-                logger.info("使用HuggingFaceEmbeddings成功初始化")
-            
+                logger.info("使用 HuggingFaceEmbeddings 成功初始化")
+
         except Exception as e:
             logger.error(f"初始化嵌入模型失败: {str(e)}", exc_info=True)
             # 最后的备用方案：使用最简配置
@@ -97,7 +95,7 @@ class LangChainMilvusManager:
                     f"建议：\n"
                     f"1. 检查模型文件是否完整\n"
                     f"2. 尝试删除模型缓存后重新下载\n"
-                    f"3. 检查PyTorch和sentence-transformers版本是否兼容"
+                    f"3. 检查 PyTorch 和 sentence-transformers 版本是否兼容"
                 )
 
         # 连接参数
@@ -206,8 +204,9 @@ class LangChainMilvusManager:
             search_kwargs=search_kwargs
         )
 
-        # 检索文档
-        docs = retriever.get_relevant_documents(query)
+        # 检索文档（兼容新版 LangChain 检索器接口）
+        # 在较新的版本中，标准用法是 retriever.invoke(query)
+        docs = retriever.invoke(query)
 
         # 格式化结果
         results = []

@@ -44,6 +44,42 @@ const routes = [
         component: () => import("@/views/CourseDetail.vue"),
         meta: { title: "课程详情" },
       },
+      {
+        path: "assignments",
+        name: "Assignments",
+        component: () => import("@/views/AssignmentList.vue"),
+        meta: { title: "作业管理" },
+      },
+      {
+        path: "assignments/create",
+        name: "AssignmentCreate",
+        component: () => import("@/views/AssignmentCreate.vue"),
+        meta: { title: "创建作业", requiresRole: [0, 1] },
+      },
+      {
+        path: "assignments/:id",
+        name: "AssignmentDetail",
+        component: () => import("@/views/AssignmentDetail.vue"),
+        meta: { title: "作业详情" },
+      },
+      {
+        path: "assignments/:id/edit",
+        name: "AssignmentEdit",
+        component: () => import("@/views/AssignmentEdit.vue"),
+        meta: { title: "编辑作业", requiresRole: [0, 1] },
+      },
+      {
+        path: "assignments/:id/submissions",
+        name: "SubmissionList",
+        component: () => import("@/views/SubmissionList.vue"),
+        meta: { title: "提交列表", requiresRole: [0, 1] },
+      },
+      {
+        path: "assignments/:id/grade-report",
+        name: "GradeReport",
+        component: () => import("@/views/GradeReport.vue"),
+        meta: { title: "评分报告" },
+      },
     ],
   },
 ];

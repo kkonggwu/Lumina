@@ -70,7 +70,8 @@ REST_FRAMEWORK = {
 
 # JWT 令牌
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),      # Access Token 有效期
+    # Access Token 有效期（默认 15 分钟，这里调长到 60 分钟）
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),        # Refresh Token 有效期
     'ROTATE_REFRESH_TOKENS': False,                     # 刷新时是否轮换 Refresh Token
     'BLACKLIST_AFTER_ROTATION': False,                  # 轮换后是否加入黑名单
