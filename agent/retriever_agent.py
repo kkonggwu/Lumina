@@ -25,7 +25,7 @@ class RetrieverAgent:
         self.enable_milvus = enable_milvus
         self._milvus_manager = None
 
-        logger.info(f"RetrieverAgent 初始化完成")
+        logger.info(f"RetrieverAgent 初始化完成，enable_milvus={self.enable_milvus}")
 
 
     async def retrieve(self,
@@ -44,14 +44,21 @@ class RetrieverAgent:
         :param top_k:
         :return:
         """
-        logger.info(f"开始检索：作业ID={assignment_id}，题目ID={question_id}，课程ID:{course_id}")
+        logger.info(
+            f"开始检索：作业ID={assignment_id}，题目ID={question_id}，课程ID={course_id}，"
+            f"enable_milvus={self.enable_milvus}"
+        )
 
         # 1. 从数据库获得标准答案和缓存的关键点
         db_result = await self._get_question_data(assignment_id, question_id)
 
         # 2. 从 Milvus 中获取参考资料（可选）
         materials = []
-        if self.enable_milvus and question:
+        if not self.enable_milvus:
+            logger.info("当前未开启 Milvus 检索（ENABLE_MILVUS=false），仅使用数据库中的标准答案与关键点")
+        elif not question:
+            logger.warning("题目内容为空，无法进行向量检索")
+        else:
             materials = await self._retrieve_from_milvus(question, course_id, top_k)
 
         result = {

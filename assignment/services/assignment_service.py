@@ -213,6 +213,55 @@ class AssignmentService:
             return False, "作业不存在", None
 
     @staticmethod
+    def update_question_keypoints(
+        teacher,
+        assignment_id: int,
+        question_id: int,
+        keypoints: list,
+    ) -> Tuple[bool, str, Optional[Assignment]]:
+        """
+        更新单个题目的标准答案关键点（answer_keypoints），并将 analyzed 标记为 True。
+
+        仅允许该作业所属教师或管理员操作。
+        """
+        try:
+            try:
+                assignment = Assignment.objects.select_related('course').get(
+                    id=assignment_id, is_deleted=False
+                )
+            except Assignment.DoesNotExist:
+                return False, "作业不存在", None
+
+            ok, msg = AssignmentService._check_teacher_permission(teacher, assignment)
+            if not ok:
+                return False, msg, None
+
+            questions = assignment.questions or []
+            found = False
+            for q in questions:
+                if q.get('id') == question_id:
+                    q['answer_keypoints'] = keypoints
+                    q['analyzed'] = True
+                    found = True
+                    break
+
+            if not found:
+                return False, f"未找到题目 ID={question_id}", None
+
+            assignment.questions = questions
+            assignment.save(update_fields=['questions', 'updated_at'])
+
+            logger.info(
+                f"更新题目关键点成功: assignment_id={assignment_id}, question_id={question_id}, "
+                f"keypoints_count={len(keypoints)}"
+            )
+            return True, "关键点已更新", assignment
+
+        except Exception as e:
+            logger.error(f"更新题目关键点失败: {str(e)}", exc_info=True)
+            return False, f"更新题目关键点失败: {str(e)}", None
+
+    @staticmethod
     def list_assignments(course_id, user) -> Tuple[bool, str, List[Assignment]]:
         """
         获取作业列表

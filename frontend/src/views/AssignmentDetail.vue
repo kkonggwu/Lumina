@@ -58,7 +58,7 @@
           </div>
         </a-card>
 
-        <!-- 教师视角：题目展示（含标准答案） -->
+        <!-- 教师视角：题目展示（含标准答案 + 关键点编辑） -->
         <template v-if="!isStudent">
           <a-card title="题目列表" :bordered="false" style="margin-top: 16px">
             <a-collapse>
@@ -90,10 +90,39 @@
                       style="margin-bottom: 4px"
                     >{{ typeof kp === 'string' ? kp : kp.point || kp.description || JSON.stringify(kp) }}</a-tag>
                   </a-descriptions-item>
+                  <a-descriptions-item label="操作">
+                    <a-button type="link" size="small" @click="openEditKeypoints(q)">
+                      编辑关键点
+                    </a-button>
+                  </a-descriptions-item>
                 </a-descriptions>
               </a-collapse-panel>
             </a-collapse>
           </a-card>
+
+          <!-- 编辑关键点弹窗 -->
+          <a-modal
+            v-model:open="editKpVisible"
+            title="编辑标准答案关键点"
+            ok-text="保存"
+            cancel-text="取消"
+            :confirm-loading="savingKp"
+            @ok="handleSaveKeypoints"
+          >
+            <div v-if="currentQuestion">
+              <p>
+                题目：<strong>{{ currentQuestion.content }}</strong>
+              </p>
+              <p style="margin: 8px 0; color: #999">
+                提示：每一行代表一个关键点，回车换行即可新增/删除关键点。
+              </p>
+              <a-textarea
+                v-model:value="keypointsText"
+                :rows="8"
+                placeholder="每行一个关键点"
+              />
+            </div>
+          </a-modal>
         </template>
 
         <!-- 学生视角：答题 -->
@@ -160,6 +189,7 @@ import {
   gradeAllSubmissions,
   submitAnswers,
   getMySubmission,
+  updateQuestionKeypoints,
 } from '@/api/assignment'
 
 const route = useRoute()
@@ -177,6 +207,12 @@ const grading = ref(false)
 const submittingAnswers = ref(false)
 const mySubmission = ref(null)
 const studentAnswers = reactive({})
+
+// 编辑关键点相关状态
+const editKpVisible = ref(false)
+const savingKp = ref(false)
+const currentQuestion = ref(null)
+const keypointsText = ref('')
 
 const loadData = async () => {
   loading.value = true
@@ -295,6 +331,41 @@ const goBack = () => router.back()
 const goEdit = () => router.push({ name: 'AssignmentEdit', params: { id: assignmentId.value } })
 const goSubmissions = () => router.push({ name: 'SubmissionList', params: { id: assignmentId.value } })
 const goMyReport = () => router.push({ name: 'GradeReport', params: { id: assignmentId.value } })
+
+const openEditKeypoints = (q) => {
+  currentQuestion.value = q
+  const kps = q.answer_keypoints || []
+  // 将当前关键点列表转为多行文本
+  keypointsText.value = kps
+    .map((kp) => (typeof kp === 'string' ? kp : kp.point || kp.description || kp.content || JSON.stringify(kp)))
+    .join('\n')
+  editKpVisible.value = true
+}
+
+const handleSaveKeypoints = async () => {
+  if (!currentQuestion.value) return
+  const rawLines = keypointsText.value.split('\n').map((l) => l.trim())
+  const keypoints = rawLines.filter((l) => l.length > 0)
+
+  savingKp.value = true
+  try {
+    const res = await updateQuestionKeypoints(assignmentId.value, currentQuestion.value.id, keypoints)
+    if (res.success) {
+      message.success(res.message || '关键点已更新')
+      // 用后端返回的最新作业数据刷新本地 questions
+      assignment.value = res.data
+      questions.value = res.data.questions || []
+      editKpVisible.value = false
+      currentQuestion.value = null
+    } else {
+      message.error(res.message || '更新关键点失败')
+    }
+  } catch (e) {
+    message.error(e.message || '更新关键点失败')
+  } finally {
+    savingKp.value = false
+  }
+}
 
 onMounted(loadData)
 </script>

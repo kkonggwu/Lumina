@@ -10,11 +10,14 @@ from assignment.bak.views import (
     AssignmentDeleteView,
     AssignmentListView,
     AssignmentPublishView,
+    QuestionKeypointsUpdateView,
     SubmitAnswersView,
     AnalyzeStandardAnswersView,
     GradeAllSubmissionsView,
     SubmissionListView,
     MySubmissionView,
+    TeacherSubmissionDetailView,
+    ManualGradeSubmissionView,
 )
 
 app_name = 'assignment'
@@ -47,6 +50,15 @@ urlpatterns = [
     # 方法: POST
     path('<int:assignment_id>/publish/', AssignmentPublishView.as_view(), name='assignment_publish'),
 
+    # 更新单题标准答案关键点（教师手工编辑）
+    # URL: /api/assignment/<assignment_id>/questions/<question_id>/keypoints/
+    # 方法: PUT
+    path(
+        '<int:assignment_id>/questions/<int:question_id>/keypoints/',
+        QuestionKeypointsUpdateView.as_view(),
+        name='question_keypoints_update',
+    ),
+
     # ==================== 提交与判题 ====================
 
     # 学生提交答案
@@ -73,4 +85,22 @@ urlpatterns = [
     # URL: /api/assignment/<id>/my-submission/
     # 方法: GET
     path('<int:assignment_id>/my-submission/', MySubmissionView.as_view(), name='my_submission'),
+
+    # 教师查看指定提交详情（含评分）
+    # URL: /api/assignment/<assignment_id>/submissions/<submission_id>/
+    # 方法: GET
+    path(
+        '<int:assignment_id>/submissions/<int:submission_id>/',
+        TeacherSubmissionDetailView.as_view(),
+        name='submission_detail',
+    ),
+
+    # 教师人工评分单个提交
+    # URL: /api/assignment/<assignment_id>/submissions/<submission_id>/manual-grade/
+    # 方法: POST
+    path(
+        '<int:assignment_id>/submissions/<int:submission_id>/manual-grade/',
+        ManualGradeSubmissionView.as_view(),
+        name='manual_grade_submission',
+    ),
 ]

@@ -6,7 +6,7 @@
 @Date: 2025/11/12
 @Version: 1.0
 """
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import time
 
 from langchain_community.vectorstores import Milvus
@@ -16,6 +16,30 @@ from pymilvus import connections, utility
 from utils.logger import get_logger
 
 logger = get_logger('langchain_milvus_manager')
+
+
+def _normalize_milvus_scores_to_similarity(pairs: List[Tuple]) -> List[float]:
+    """
+    将 Milvus search 返回的原始分数转为 0~1 的相似度，供前端展示。
+
+    Milvus 的 metric 可能是 L2（越小越好）或 IP（越大越好），LangChain 返回的
+    Document 上不带 score，因此必须用 similarity_search_with_score。
+
+    对同一批检索结果做 min-max 归一化：最相关的一条为 1.0，最不相关的一条为 0.0。
+    """
+    if not pairs:
+        return []
+    raw = [float(p[1]) for p in pairs]
+    if len(raw) == 1:
+        return [1.0]
+    lo, hi = min(raw), max(raw)
+    if hi == lo:
+        return [1.0] * len(raw)
+    # 检索结果按 relevance 排序：L2 通常为距离升序（越小越好），IP 为分数降序（越大越好）
+    ascending = raw[0] <= raw[-1]
+    if ascending:
+        return [(hi - s) / (hi - lo) for s in raw]
+    return [(s - lo) / (hi - lo) for s in raw]
 
 
 class LangChainMilvusManager:
@@ -193,28 +217,23 @@ class LangChainMilvusManager:
         :param filter_expr: Milvus 过滤表达式（可选），例如 'course_id == 1'
                             在向量检索时直接由 Milvus 执行过滤，效率高于 Python 层后过滤
         """
-        # 构建检索参数
-        search_kwargs = {"k": limit}
-        if filter_expr:
-            search_kwargs["expr"] = filter_expr
-
-        # 创建标准检索器
-        retriever = self.vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs=search_kwargs
+        # 必须使用 similarity_search_with_score：普通 retriever.invoke 返回的 Document
+        # 不含 Milvus 的 distance/score，getattr(doc, 'score', 0.0) 会一直为 0。
+        pairs = self.vector_store.similarity_search_with_score(
+            query,
+            k=limit,
+            expr=filter_expr,
         )
+        similarities = _normalize_milvus_scores_to_similarity(pairs)
 
-        # 检索文档（兼容新版 LangChain 检索器接口）
-        # 在较新的版本中，标准用法是 retriever.invoke(query)
-        docs = retriever.invoke(query)
-
-        # 格式化结果
         results = []
-        for doc in docs:
+        for i, (doc, raw_score) in enumerate(pairs):
+            sim = similarities[i] if i < len(similarities) else 0.0
             results.append({
                 'content': doc.page_content,
                 'metadata': doc.metadata,
-                'score': getattr(doc, 'score', 0.0)
+                'score': round(sim, 4),
+                'raw_score': float(raw_score),
             })
 
         return results

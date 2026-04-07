@@ -171,3 +171,46 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
             'answers', 'total_score', 'submission_status', 'status_display',
             'submitted_at', 'graded_at', 'grade_info',
         ]
+
+
+# ==================== 教师人工判题 ====================
+
+
+class ManualGradeSerializer(serializers.Serializer):
+    """
+    教师人工评分请求校验
+
+    - total_score: 本次评分的总分
+    - grading_rubric: 评分细则（JSON），结构与 Grade.grading_rubric 保持一致，由前端自由组织
+    - overall_comment: 总体评语
+    """
+
+    total_score = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        required=True,
+        help_text='本次评分总分',
+    )
+    grading_rubric = serializers.JSONField(
+        required=False,
+        help_text='评分细则(JSON，可选)',
+    )
+    overall_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='总体评语',
+    )
+
+
+class QuestionKeypointsUpdateSerializer(serializers.Serializer):
+    """
+    更新题目关键点的请求体
+
+    只关心 keypoints 字段，question_id 从 URL 传递。
+    """
+
+    keypoints = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        allow_empty=True,
+        help_text='关键点列表，每个元素为一个关键点文本',
+    )

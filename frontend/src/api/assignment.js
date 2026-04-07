@@ -47,6 +47,19 @@ export const publishAssignment = (assignmentId) => {
   });
 };
 
+// 更新单题标准答案关键点
+export const updateQuestionKeypoints = (
+  assignmentId,
+  questionId,
+  keypoints
+) => {
+  return request({
+    url: `/assignment/${assignmentId}/questions/${questionId}/keypoints/`,
+    method: "put",
+    data: { keypoints },
+  });
+};
+
 // ==================== 提交与判题 ====================
 
 export const submitAnswers = (assignmentId, answers) => {
@@ -85,6 +98,25 @@ export const getSubmissionList = (assignmentId) => {
 export const getMySubmission = (assignmentId) => {
   return request({
     url: `/assignment/${assignmentId}/my-submission/`,
+    method: "get",
+  });
+};
+
+// ==================== 教师人工判题 ====================
+
+export const manualGradeSubmission = (assignmentId, submissionId, data) => {
+  return request({
+    url: `/assignment/${assignmentId}/submissions/${submissionId}/manual-grade/`,
+    method: "post",
+    data,
+  });
+};
+
+// ==================== 教师查看指定提交详情 ====================
+
+export const getSubmissionDetail = (assignmentId, submissionId) => {
+  return request({
+    url: `/assignment/${assignmentId}/submissions/${submissionId}/`,
     method: "get",
   });
 };

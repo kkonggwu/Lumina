@@ -83,6 +83,7 @@ class ReporterAgent:
             missing_keypoints, redundant_keypoints, scoring_details
         )
         meta = self._build_meta(scoring_history, human_feedback, reference_materials)
+        recommended_documents = self._build_recommended_documents(reference_materials)
 
         # 2. LLM 生成内容
         # 将列表转为 Prompt 友好的格式
@@ -116,6 +117,7 @@ class ReporterAgent:
             "keypoint_analysis": keypoint_analysis,
             "improvement_suggestions": improvement_suggestions,
             "meta": meta,
+            "recommended_documents": recommended_documents,
             "generated_at": datetime.now().isoformat(),
         }
 
@@ -302,6 +304,53 @@ class ReporterAgent:
             "reference_materials_count": len(reference_materials),
             "scoring_history": scoring_history
         }
+
+    @staticmethod
+    def _build_recommended_documents(reference_materials: List[dict], max_items: int = 5) -> List[dict]:
+        """
+        从参考资料列表中提炼出用于前端展示的推荐文档列表。
+        仅保留轻量字段，避免在 Grade 中存过大的内容。
+        """
+        if not reference_materials:
+            return []
+
+        recommended = []
+        for material in reference_materials[:max_items]:
+            if not isinstance(material, dict):
+                continue
+            content = material.get("content") or ""
+            metadata = material.get("metadata") or {}
+
+            # 提取文档标识与标题（尽量复用已有元数据字段）
+            doc_id = metadata.get("doc_id") or metadata.get("id") or metadata.get("document_id")
+            title = (
+                metadata.get("title")
+                or metadata.get("file_name")
+                or metadata.get("filename")
+                or metadata.get("name")
+                or "课程相关文档"
+            )
+
+            # 截断内容形成摘要，避免过长
+            snippet = ""
+            if content:
+                snippet = content[:200]
+                if len(content) > 200:
+                    snippet += "..."
+
+            score = material.get("score", 0.0)
+
+            recommended.append(
+                {
+                    "id": doc_id,
+                    "title": title,
+                    "score": round(float(score), 4) if isinstance(score, (int, float)) else 0.0,
+                    "snippet": snippet,
+                }
+            )
+
+        logger.info(f"推荐文档列表构建完成，共 {len(recommended)} 条")
+        return recommended
 
     @staticmethod
     def _format_matching_for_prompt(scoring_details: dict) -> str:

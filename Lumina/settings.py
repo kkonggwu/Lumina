@@ -329,5 +329,40 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
+        'grading_service': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'assignment_service': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'coordinator_agent': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'retriever_agent': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'analyzer_agent': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'scorer_agent': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'reporter_agent': {
+            'handlers': ['console', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
     },
 }

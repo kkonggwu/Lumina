@@ -31,7 +31,7 @@
 
         <!-- 逐题评分明细 -->
         <a-card title="逐题评分明细" :bordered="false" style="margin-top: 16px">
-          <a-collapse v-model:activeKey="activeKeys" accordion>
+          <a-collapse v-model="activeKeys" accordion>
             <a-collapse-panel
               v-for="(item, index) in questionResults"
               :key="String(index)"
@@ -55,6 +55,40 @@
           </a-collapse>
         </a-card>
 
+        <!-- 推荐阅读文档（基于检索到的参考资料） -->
+        <a-card
+          v-if="recommendedDocuments.length > 0"
+          title="推荐阅读资料"
+          :bordered="false"
+          style="margin-top: 16px"
+        >
+          <a-list :data-source="recommendedDocuments" item-layout="horizontal">
+            <template #renderItem="{ item }">
+              <a-list-item>
+                <a-list-item-meta>
+                  <template #title>
+                    {{ item.title || '课程相关文档' }}
+                  </template>
+                  <template #description>
+                    <div>
+                      <div v-if="item.snippet" style="margin-bottom: 4px">
+                        {{ item.snippet }}
+                      </div>
+                      <a-tag
+                        v-if="typeof item.score === 'number'"
+                        color="blue"
+                        :bordered="false"
+                      >
+                        相似度 {{ Math.round(item.score * 100) }}%
+                      </a-tag>
+                    </div>
+                  </template>
+                </a-list-item-meta>
+              </a-list-item>
+            </template>
+          </a-list>
+        </a-card>
+
         <!-- Agent 流程可视化（取第一道有效题的数据来展示整体流程特征） -->
         <AgentWorkflow
           v-if="firstValidResult"
@@ -72,7 +106,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { message } from 'ant-design-vue'
-import { getMySubmission, getAssignmentDetail } from '@/api/assignment'
+import {
+  getMySubmission,
+  getSubmissionDetail,
+  getAssignmentDetail,
+} from '@/api/assignment'
 import ScoreSummary from '@/components/ScoreSummary.vue'
 import QuestionCard from '@/components/QuestionCard.vue'
 import AgentWorkflow from '@/components/AgentWorkflow.vue'
@@ -83,6 +121,7 @@ const authStore = useAuthStore()
 
 const assignmentId = computed(() => route.params.id)
 const isStudent = computed(() => authStore.isStudent)
+const submissionId = computed(() => route.query.submission_id || null)
 
 const loading = ref(false)
 const submission = ref(null)
@@ -130,6 +169,15 @@ const firstValidResult = computed(() => {
   return questionResults.value.find((r) => r.status === 'completed') || questionResults.value[0]
 })
 
+// 从第一道有效题的报告中抽取推荐文档列表
+const recommendedDocuments = computed(() => {
+  const base = firstValidResult.value
+  if (!base || !base.report || !Array.isArray(base.report.recommended_documents)) {
+    return []
+  }
+  return base.report.recommended_documents
+})
+
 const getQuestionContent = (item) => {
   const qId = item.question_id
   const found = questions.value.find((q) => q.id === qId)
@@ -171,11 +219,19 @@ const loadData = async () => {
     }
 
     // Load submission data
-    const subRes = await getMySubmission(assignmentId.value)
+    let subRes
+    if (isStudent.value || !submissionId.value) {
+      // 学生视角或无 submission_id 时，使用“我的提交”接口
+      subRes = await getMySubmission(assignmentId.value)
+    } else {
+      // 教师视角：通过 submission_id 精确获取指定学生的提交
+      subRes = await getSubmissionDetail(assignmentId.value, submissionId.value)
+    }
+
     if (subRes.success) {
       submission.value = subRes.data
     } else {
-      message.warning(subRes.message || '暂无提交记录')
+      message.warning(subRes.message || '暂无提交记录或尚未批改')
     }
   } catch (e) {
     message.error(e.message || '加载失败')
