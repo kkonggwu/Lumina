@@ -1,43 +1,25 @@
 <template>
   <div class="grade-report-container">
-    <a-page-header
-      title="评分报告"
-      :sub-title="subtitle"
-      @back="goBack"
-    />
+    <a-page-header title="评分报告" :sub-title="subtitle" @back="goBack" />
 
     <a-spin :spinning="loading">
       <a-empty v-if="!loading && !submission" description="暂无评分数据" />
 
       <template v-if="submission">
         <!-- 总分概览 -->
-        <ScoreSummary
-          :score="totalScore"
-          :max-score="totalMaxScore"
-          :grade-level="overallGradeLevel"
-          :base-score="totalBaseScore"
-          :redundant-penalty="totalRedundantPenalty"
-        />
+        <ScoreSummary :score="totalScore" :max-score="totalMaxScore" :grade-level="overallGradeLevel"
+          :base-score="totalBaseScore" :redundant-penalty="totalRedundantPenalty" />
 
         <!-- 总体评语 -->
-        <a-card
-          v-if="overallComment"
-          title="总体评语"
-          :bordered="false"
-          style="margin-top: 16px"
-        >
+        <a-card v-if="overallComment" title="总体评语" :bordered="false" style="margin-top: 16px">
           <div class="overall-comment">{{ overallComment }}</div>
         </a-card>
 
         <!-- 逐题评分明细 -->
         <a-card title="逐题评分明细" :bordered="false" style="margin-top: 16px">
           <a-collapse v-model="activeKeys" accordion>
-            <a-collapse-panel
-              v-for="(item, index) in questionResults"
-              :key="String(index)"
-              :header="getQuestionHeader(item, index)"
-              :class="{ 'panel-error': item.status === 'error' }"
-            >
+            <a-collapse-panel v-for="(item, index) in questionResults" :key="String(index)"
+              :header="getQuestionHeader(item, index)" :class="{ 'panel-error': item.status === 'error' }">
               <template #extra>
                 <a-tag :color="getQuestionTagColor(item)" size="small">
                   {{ item.report?.summary?.score ?? item.score ?? '-' }} /
@@ -45,42 +27,32 @@
                 </a-tag>
               </template>
 
-              <QuestionCard
-                :index="index"
-                :question="getQuestionContent(item)"
-                :student-answer="getStudentAnswer(item)"
-                :report="item.report"
-              />
+              <QuestionCard :index="index" :question="getQuestionContent(item)" :student-answer="getStudentAnswer(item)"
+                :report="item.report" />
             </a-collapse-panel>
           </a-collapse>
         </a-card>
 
         <!-- 推荐阅读文档（基于检索到的参考资料） -->
-        <a-card
-          v-if="recommendedDocuments.length > 0"
-          title="推荐阅读资料"
-          :bordered="false"
-          style="margin-top: 16px"
-        >
+        <a-card v-if="recommendedDocuments.length > 0" title="推荐阅读资料" :bordered="false" style="margin-top: 16px">
+          <p class="recommended-docs-hint">
+            下列资料按本次判题时检索结果的<strong>相关度从高到低</strong>排列；「第 N 位」仅表示在本次返回的几条中的顺序，不代表绝对相似度百分比。
+          </p>
           <a-list :data-source="recommendedDocuments" item-layout="horizontal">
-            <template #renderItem="{ item }">
+            <template #renderItem="{ item, index }">
               <a-list-item>
                 <a-list-item-meta>
                   <template #title>
-                    {{ item.title || '课程相关文档' }}
+                    <span class="recommended-doc-title">
+                      <a-tag :color="index === 0 ? 'gold' : 'default'" class="rank-tag">
+                        第 {{ index + 1 }} 位
+                      </a-tag>
+                      {{ item.title || '课程相关文档' }}
+                    </span>
                   </template>
                   <template #description>
-                    <div>
-                      <div v-if="item.snippet" style="margin-bottom: 4px">
-                        {{ item.snippet }}
-                      </div>
-                      <a-tag
-                        v-if="typeof item.score === 'number'"
-                        color="blue"
-                        :bordered="false"
-                      >
-                        相似度 {{ Math.round(item.score * 100) }}%
-                      </a-tag>
+                    <div v-if="item.snippet" class="recommended-doc-snippet">
+                      {{ item.snippet }}
                     </div>
                   </template>
                 </a-list-item-meta>
@@ -90,12 +62,8 @@
         </a-card>
 
         <!-- Agent 流程可视化（取第一道有效题的数据来展示整体流程特征） -->
-        <AgentWorkflow
-          v-if="firstValidResult"
-          :status="firstValidResult.status"
-          :scoring-history="firstValidResult.scoring_history || []"
-          :meta="firstValidResult.report?.meta"
-        />
+        <AgentWorkflow v-if="firstValidResult" :status="firstValidResult.status"
+          :scoring-history="firstValidResult.scoring_history || []" :meta="firstValidResult.report?.meta" />
       </template>
     </a-spin>
   </div>
@@ -251,6 +219,7 @@ onMounted(loadData)
   border-radius: 8px;
   padding: 24px;
 }
+
 .overall-comment {
   padding: 16px;
   background: #f6ffed;
@@ -259,7 +228,30 @@ onMounted(loadData)
   line-height: 1.8;
   white-space: pre-wrap;
 }
+
 .panel-error :deep(.ant-collapse-header) {
   color: #f5222d !important;
+}
+
+.recommended-docs-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 1.6;
+}
+
+.recommended-doc-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rank-tag {
+  margin-inline-end: 0;
+}
+
+.recommended-doc-snippet {
+  margin-top: 4px;
 }
 </style>
