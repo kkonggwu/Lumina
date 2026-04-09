@@ -112,19 +112,19 @@ ENABLE_MILVUS=true
 
 ## 📖 Agent Workflow
 
-![流程图.png](staticfiles/%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
+![流程图.png](images/%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
 
 ## Page Display (Temporary - 2026/4/9)
 
 ### Teacher Side - Assignment Management
 
-![作业管理图.png](staticfiles/%E4%BD%9C%E4%B8%9A%E7%AE%A1%E7%90%86%E5%9B%BE.png)
+![作业管理图.png](images/%E4%BD%9C%E4%B8%9A%E7%AE%A1%E7%90%86%E5%9B%BE.png)
 
 ### Student Side - Assignment Evaluation
 
-![作业报告1.png](staticfiles/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A1.png)
+![作业报告1.png](images/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A1.png)
 
-![作业报告2.png](staticfiles/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A2.png)
+![作业报告2.png](images/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A2.png)
 
 _To be continued for now_
 

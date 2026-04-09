@@ -112,16 +112,16 @@ ENABLE_MILVUS=true
 5. **查看反馈**：获取分数、评语和推荐阅读材料
 
 ## 📖 Agent工作流
-![流程图.png](staticfiles/%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
+![流程图.png](images/%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
 
 ## 页面展示（暂时-2026/4/9）
 ### 教师端作业管理
-![作业管理图.png](staticfiles/%E4%BD%9C%E4%B8%9A%E7%AE%A1%E7%90%86%E5%9B%BE.png)
+![作业管理图.png](images/%E4%BD%9C%E4%B8%9A%E7%AE%A1%E7%90%86%E5%9B%BE.png)
 
 ### 学生端作业评价
-![作业报告1.png](staticfiles/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A1.png)
+![作业报告1.png](images/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A1.png)
 
-![作业报告2.png](staticfiles/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A2.png)
+![作业报告2.png](images/%E4%BD%9C%E4%B8%9A%E6%8A%A5%E5%91%8A2.png)
 
 _暂时先写这么多_
 
