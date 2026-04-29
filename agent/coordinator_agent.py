@@ -15,6 +15,8 @@ from langgraph.constants import END
 from langgraph.graph import StateGraph
 
 from agent.analyzer_agent import AnalyzerAgent
+from agent.code_grader_agent import CodeGraderAgent
+from agent.report_grader_agent import ReportGraderAgent
 from agent.reporter_agent import ReporterAgent
 from agent.retriever_agent import RetrieverAgent
 from agent.scorer_agent import ScorerAgent
@@ -28,6 +30,10 @@ class ScoringState(TypedDict):
     course_id: int
     question_id: int
     assignment_id: int
+    # 题目类型：essay | short_answer | python | sql | report
+    question_type: str
+    # 编程题/SQL 题的测试用例（来自 assignment.questions[].test_cases）
+    test_cases: Optional[list]
 
     # 检索阶段的结果 (retrieve)
     standard_answer: Optional[str]
@@ -82,6 +88,8 @@ class CoordinatorAgent:
         self.analyzer = AnalyzerAgent()
         self.scorer = ScorerAgent()
         self.reporter = ReporterAgent()
+        self.code_grader = CodeGraderAgent()
+        self.report_grader = ReportGraderAgent()
 
         self.graph = self._bulid_graph()
         self.compiled_graph = self.graph.compile()
@@ -93,11 +101,14 @@ class CoordinatorAgent:
 
         # 定义节点
         workflow.add_node("retrieve", self._node_retrieve)
+        workflow.add_node("route_by_type", self._node_route_by_type)
         workflow.add_node("analyze", self._node_analyze)
         workflow.add_node("score", self._node_score)
         workflow.add_node("quality_check", self._node_quality_check)
         workflow.add_node("human_review", self._node_human_review)
         workflow.add_node("rescore", self._node_rescore)
+        workflow.add_node("code_grade", self._node_code_grade)
+        workflow.add_node("report_eval", self._node_report_eval)
         workflow.add_node("report", self._node_report)
         workflow.add_node("error_handle", self._node_error_handler)
 
@@ -109,10 +120,26 @@ class CoordinatorAgent:
             "retrieve",
             self._check_retrieve_status,
             {
-                "continue": "analyze",
+                "continue": "route_by_type",
                 "error": "error_handle"
             }
         )
+
+        # 按题目类型分叉：文本题 → analyze；代码题 → code_grade；报告题 → report_eval
+        workflow.add_conditional_edges(
+            "route_by_type",
+            self._route_by_type_fn,
+            {
+                "essay_path": "analyze",
+                "code_path": "code_grade",
+                "report_path": "report_eval",
+            }
+        )
+
+        # 代码/报告题：CodeGraderAgent / ReportGraderAgent 已经生成了完整的评分报告，
+        # 直接走到 END，避免再被 ReporterAgent（针对关键点流程设计）覆盖结果。
+        workflow.add_edge("code_grade", END)
+        workflow.add_edge("report_eval", END)
 
         workflow.add_conditional_edges(
             "analyze",
@@ -162,6 +189,168 @@ class CoordinatorAgent:
 
         return workflow
 
+
+    # ============================================================
+    # 按题目类型路由
+    # ============================================================
+
+    @staticmethod
+    async def _node_route_by_type(state: ScoringState) -> Dict:
+        """
+        空路由节点：本身不修改 state，仅作为分叉点。
+        实际路由逻辑由 _route_by_type_fn 决定。
+        """
+        return {}
+
+    @staticmethod
+    def _route_by_type_fn(state: ScoringState) -> str:
+        """
+        根据题目类型决定后续路径：
+          essay / short_answer → essay_path（原有关键点流程）
+          python / sql         → code_path（代码评分流程）
+          report               → report_path（报告评分流程）
+        默认走 essay_path，保持向后兼容。
+        """
+        q_type = state.get("question_type", "essay")
+        if q_type in ("python", "sql"):
+            logger.info(f"题目类型={q_type}，走代码评分路径")
+            return "code_path"
+        if q_type == "report":
+            logger.info("题目类型=report，走报告评分路径")
+            return "report_path"
+        logger.info(f"题目类型={q_type}，走文本关键点评分路径")
+        return "essay_path"
+
+    # ============================================================
+    # 代码评分节点（python / sql）
+    # ============================================================
+
+    async def _node_code_grade(self, state: ScoringState) -> Dict:
+        """
+        代码评分节点：调用 CodeGraderAgent 对 Python / SQL 代码进行评分，
+        并将结果直接组装成最终 report 写入 state。
+        """
+        q_type = state.get("question_type", "python")
+        logger.info(f"进入代码评分节点，类型={q_type}，题目ID={state['question_id']}")
+
+        try:
+            if q_type == "python":
+                result = await self.code_grader.grade_python(
+                    question=state["question"],
+                    standard_answer=state.get("standard_answer") or "",
+                    student_code=state["student_answer"],
+                    test_cases=state.get("test_cases"),
+                    max_score=state["max_score"],
+                )
+            else:
+                result = await self.code_grader.grade_sql(
+                    question=state["question"],
+                    standard_answer=state.get("standard_answer") or "",
+                    student_sql=state["student_answer"],
+                    test_cases=state.get("test_cases"),
+                    max_score=state["max_score"],
+                )
+
+            score = result.get("score", 0.0)
+            confidence = result.get("confidence", 0.75)
+            feedback = result.get("feedback", "")
+            details = result.get("details", {})
+            suggestions = details.get("suggestions", details.get("scoring_breakdown", {}).get("suggestions", []))
+
+            # 组装成与文本路径相同结构的 report，便于后续统一处理
+            report = {
+                "score": score,
+                "max_score": state["max_score"],
+                "feedback": feedback,
+                "suggestions": suggestions,
+                "scoring_details": details,
+                "summary": {
+                    "score": score,
+                    "max_score": state["max_score"],
+                    "grade_level": details.get("grade_level", ""),
+                    "percentage": round(score / state["max_score"] * 100, 1) if state["max_score"] > 0 else 0,
+                },
+            }
+
+            logger.info(f"代码评分完成：{score}/{state['max_score']}，置信度={confidence}")
+
+            return {
+                "score": score,
+                "confidence_score": confidence,
+                "scoring_details": details,
+                "report": report,
+                "status": "completed",
+            }
+
+        except Exception as e:
+            logger.error(f"代码评分节点异常：{str(e)}", exc_info=True)
+            return {
+                "error_message": f"代码评分失败：{str(e)}",
+                "status": "error",
+            }
+
+    # ============================================================
+    # 报告评分节点（report）
+    # ============================================================
+
+    async def _node_report_eval(self, state: ScoringState) -> Dict:
+        """
+        课程报告评分节点：调用 ReportGraderAgent 进行多维度评分。
+        """
+        logger.info(f"进入报告评分节点，题目ID={state['question_id']}")
+
+        try:
+            # 从题目元数据中获取教师自定义评分细则（若有）
+            grading_rubric = None
+
+            result = await self.report_grader.grade(
+                question=state["question"],
+                standard_answer=state.get("standard_answer") or "",
+                student_report=state["student_answer"],
+                max_score=state["max_score"],
+                grading_rubric=grading_rubric,
+            )
+
+            score = result.get("score", 0.0)
+            confidence = result.get("confidence", 0.75)
+            feedback = result.get("feedback", "")
+            details = result.get("details", {})
+            suggestions = details.get("suggestions", [])
+
+            report = {
+                "score": score,
+                "max_score": state["max_score"],
+                "feedback": feedback,
+                "suggestions": suggestions,
+                "scoring_details": details,
+                "summary": {
+                    "score": score,
+                    "max_score": state["max_score"],
+                    "grade_level": details.get("grade_level", ""),
+                    "percentage": round(score / state["max_score"] * 100, 1) if state["max_score"] > 0 else 0,
+                },
+            }
+
+            logger.info(f"报告评分完成：{score}/{state['max_score']}，置信度={confidence}")
+
+            return {
+                "score": score,
+                "confidence_score": confidence,
+                "scoring_details": details,
+                "report": report,
+                "status": "completed",
+            }
+
+        except Exception as e:
+            logger.error(f"报告评分节点异常：{str(e)}", exc_info=True)
+            return {
+                "error_message": f"报告评分失败：{str(e)}",
+                "status": "error",
+            }
+
+    # ============================================================
+    # 原有节点
+    # ============================================================
 
     async def _node_retrieve(self, state: ScoringState) -> Dict:
         """
@@ -584,6 +773,8 @@ class CoordinatorAgent:
             question_id: int,
             assignment_id: int,
             max_score: float,
+            question_type: str = "essay",
+            test_cases: Optional[list] = None,
     ) -> dict:
         """
         单题评分入口，供 Service 层 / API 视图调用
@@ -593,10 +784,13 @@ class CoordinatorAgent:
         :param question_id: 题目 ID（Assignment.questions 中的 id）
         :param assignment_id: 作业 ID
         :param max_score: 该题满分
+        :param question_type: 题目类型（essay/short_answer/python/sql/report）
+        :param test_cases: 测试用例列表（python/sql 题专用）
         :return: 格式化后的评分结果
         """
         logger.info(
-            f"开始判题：作业ID={assignment_id}, 题目ID={question_id}, 满分={max_score}"
+            f"开始判题：作业ID={assignment_id}, 题目ID={question_id}, "
+            f"类型={question_type}, 满分={max_score}"
         )
 
         initial_state = self._build_initial_state(
@@ -606,6 +800,8 @@ class CoordinatorAgent:
             question_id=question_id,
             assignment_id=assignment_id,
             max_score=max_score,
+            question_type=question_type,
+            test_cases=test_cases,
         )
 
         try:
@@ -665,6 +861,8 @@ class CoordinatorAgent:
             q_id = q.get("id")
             q_content = q.get("content", "")
             q_max_score = float(q.get("score", 0))
+            q_type = q.get("question_type", "essay")
+            q_test_cases = q.get("test_cases")
             student_answer = answer_map.get(str(q_id), "")
 
             if not student_answer.strip():
@@ -689,6 +887,8 @@ class CoordinatorAgent:
                 question_id=q_id,
                 assignment_id=assignment.id,
                 max_score=q_max_score,
+                question_type=q_type,
+                test_cases=q_test_cases,
             )
             result["question_id"] = q_id
             results.append(result)
@@ -727,6 +927,8 @@ class CoordinatorAgent:
             question_id: int,
             assignment_id: int,
             max_score: float,
+            question_type: str = "essay",
+            test_cases: Optional[list] = None,
     ) -> ScoringState:
         """构造 LangGraph 流程的初始 State"""
         return {
@@ -735,6 +937,8 @@ class CoordinatorAgent:
             "course_id": course_id,
             "question_id": question_id,
             "assignment_id": assignment_id,
+            "question_type": question_type,
+            "test_cases": test_cases,
             "max_score": max_score,
             "standard_answer": None,
             "reference_materials": None,

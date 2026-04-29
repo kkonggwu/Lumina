@@ -177,9 +177,15 @@ class GradingService:
             logger.error(f"预分析标准答案失败: {str(e)}", exc_info=True)
             return False, f"预分析失败: {str(e)}", None
 
+    # 不需要关键点预分析的题目类型（由专用 Agent 直接评分）
+    _NON_KEYPOINT_TYPES = {"python", "sql", "report"}
+
     @staticmethod
     async def _analyze_all_questions(questions: list) -> dict:
-        """异步分析所有题目的标准答案"""
+        """
+        异步分析所有题目的标准答案关键点。
+        python / sql / report 类型由专用 Agent 处理，跳过此预分析阶段。
+        """
         from agent.analyzer_agent import AnalyzerAgent
 
         analyzer = AnalyzerAgent()
@@ -189,6 +195,18 @@ class GradingService:
             q_id = str(q.get('id'))
             content = q.get('content', '')
             standard_answer = q.get('standard_answer', '')
+            q_type = q.get('question_type', 'essay')
+
+            # 代码题和报告题不走关键点流程，跳过预分析
+            if q_type in GradingService._NON_KEYPOINT_TYPES:
+                logger.info(f"题目 {q_id} 类型={q_type}，跳过关键点预分析")
+                results[q_id] = {
+                    'success': True,
+                    'skipped': True,
+                    'reason': f'{q_type} 类型题目由专用 Agent 评分，无需关键点预分析',
+                    'keypoints': [],
+                }
+                continue
 
             if not standard_answer:
                 results[q_id] = {

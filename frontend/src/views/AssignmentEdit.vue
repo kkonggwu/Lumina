@@ -58,22 +58,45 @@
           <div v-for="(q, index) in form.questions" :key="q.id" class="question-block">
             <a-card size="small" :title="`第 ${index + 1} 题`" class="question-card">
               <template #extra>
-                <a-popconfirm
-                  v-if="form.questions.length > 1"
-                  title="确定删除该题目？"
-                  @confirm="removeQuestion(index)"
-                >
-                  <a-button type="link" danger size="small">删除</a-button>
-                </a-popconfirm>
+                <a-space>
+                  <a-tag :color="QUESTION_TYPE_COLOR[q.question_type] || 'default'">
+                    {{ QUESTION_TYPE_LABEL[q.question_type] || q.question_type }}
+                  </a-tag>
+                  <a-popconfirm
+                    v-if="form.questions.length > 1"
+                    title="确定删除该题目？"
+                    @confirm="removeQuestion(index)"
+                  >
+                    <a-button type="link" danger size="small">删除</a-button>
+                  </a-popconfirm>
+                </a-space>
               </template>
 
-              <a-form-item
-                label="题目内容"
-                :name="['questions', index, 'content']"
-                :rules="[{ required: true, message: '请输入题目内容' }]"
-              >
-                <a-textarea v-model:value="q.content" placeholder="请输入题目内容" :rows="2" />
-              </a-form-item>
+              <a-row :gutter="16">
+                <a-col :span="8">
+                  <a-form-item
+                    label="题目类型"
+                    :name="['questions', index, 'question_type']"
+                    :rules="[{ required: true, message: '请选择题目类型' }]"
+                  >
+                    <a-select
+                      v-model:value="q.question_type"
+                      :options="QUESTION_TYPE_OPTIONS"
+                      style="width: 100%"
+                      @change="handleTypeChange(q)"
+                    />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="16">
+                  <a-form-item
+                    label="题目内容"
+                    :name="['questions', index, 'content']"
+                    :rules="[{ required: true, message: '请输入题目内容' }]"
+                  >
+                    <a-textarea v-model:value="q.content" placeholder="请输入题目内容/作业要求" :rows="2" />
+                  </a-form-item>
+                </a-col>
+              </a-row>
 
               <a-row :gutter="16">
                 <a-col :span="6">
@@ -87,14 +110,80 @@
                 </a-col>
                 <a-col :span="18">
                   <a-form-item
-                    label="标准答案"
+                    :label="getStandardAnswerLabel(q.question_type)"
                     :name="['questions', index, 'standard_answer']"
-                    :rules="[{ required: true, message: '请输入标准答案' }]"
+                    :rules="[{ required: true, message: '请输入标准答案/参考实现' }]"
                   >
-                    <a-textarea v-model:value="q.standard_answer" placeholder="请输入标准答案" :rows="3" />
+                    <a-textarea
+                      v-model:value="q.standard_answer"
+                      :placeholder="getStandardAnswerPlaceholder(q.question_type)"
+                      :rows="getStandardAnswerRows(q.question_type)"
+                      :class="{ 'code-input': isCodeType(q.question_type) }"
+                    />
                   </a-form-item>
                 </a-col>
               </a-row>
+
+              <!-- Python / SQL 题：测试用例编辑 -->
+              <template v-if="isCodeType(q.question_type)">
+                <a-divider orientation="left" plain>测试用例（必填）</a-divider>
+                <div class="test-cases-block">
+                  <div
+                    v-for="(tc, ti) in q.test_cases"
+                    :key="ti"
+                    class="test-case-row"
+                  >
+                    <span class="test-case-index">用例 {{ ti + 1 }}</span>
+                    <a-input
+                      v-model:value="tc.input"
+                      placeholder="输入"
+                      style="flex: 1; margin-right: 8px"
+                    />
+                    <a-input
+                      v-model:value="tc.output"
+                      :placeholder="q.question_type === 'sql' ? '期望结果集说明' : '期望输出'"
+                      style="flex: 1; margin-right: 8px"
+                    />
+                    <a-input
+                      v-model:value="tc.description"
+                      placeholder="说明（可选）"
+                      style="flex: 1; margin-right: 8px"
+                    />
+                    <a-button
+                      type="link"
+                      danger
+                      size="small"
+                      :disabled="q.test_cases.length <= 1"
+                      @click="removeTestCase(q, ti)"
+                    >
+                      删除
+                    </a-button>
+                  </div>
+                  <a-button
+                    type="dashed"
+                    block
+                    size="small"
+                    @click="addTestCase(q)"
+                  >
+                    <plus-outlined /> 添加测试用例
+                  </a-button>
+                </div>
+              </template>
+
+              <!-- 报告题：评分细则 -->
+              <template v-if="q.question_type === 'report'">
+                <a-form-item
+                  label="评分细则（选填）"
+                  :name="['questions', index, 'grading_rubric']"
+                  extra="可填写本报告的评分细则、要求和侧重点。留空则按通用学术标准评分。"
+                >
+                  <a-textarea
+                    v-model:value="q.grading_rubric"
+                    placeholder="例如：1. 报告须包含背景、方法、结果、结论四个部分; 2. 重点考察对XX知识点的理解; 3. 鼓励结合实例论述。"
+                    :rows="3"
+                  />
+                </a-form-item>
+              </template>
             </a-card>
           </div>
 
@@ -136,6 +225,33 @@ const assignmentId = computed(() => route.params.id)
 
 let questionIdCounter = 100
 
+const QUESTION_TYPE_OPTIONS = [
+  { value: 'essay', label: '论述题' },
+  { value: 'short_answer', label: '简答题' },
+  { value: 'python', label: 'Python 编程题' },
+  { value: 'sql', label: 'SQL 语句题' },
+  { value: 'report', label: '课程报告' },
+]
+
+const QUESTION_TYPE_LABEL = {
+  essay: '论述题',
+  short_answer: '简答题',
+  python: 'Python',
+  sql: 'SQL',
+  report: '课程报告',
+}
+
+const QUESTION_TYPE_COLOR = {
+  essay: 'blue',
+  short_answer: 'cyan',
+  python: 'geekblue',
+  sql: 'purple',
+  report: 'gold',
+}
+
+const isCodeType = (t) => t === 'python' || t === 'sql'
+const makeEmptyTestCase = () => ({ input: '', output: '', description: '' })
+
 const form = reactive({
   title: '',
   description: '',
@@ -164,12 +280,30 @@ const loadAssignment = async () => {
       form.description = data.description || ''
       form.start_time = data.start_time ? dayjs(data.start_time) : null
       form.end_time = data.end_time ? dayjs(data.end_time) : null
-      form.questions = (data.questions || []).map((q) => ({
-        id: q.id,
-        content: q.content || '',
-        score: q.score || 10,
-        standard_answer: q.standard_answer || '',
-      }))
+      form.questions = (data.questions || []).map((q) => {
+        const qType = q.question_type || 'essay'
+        const item = {
+          id: q.id,
+          question_type: qType,
+          content: q.content || '',
+          score: q.score || 10,
+          standard_answer: q.standard_answer || '',
+          test_cases: [],
+          grading_rubric: q.grading_rubric || '',
+        }
+        if (isCodeType(qType)) {
+          // 兼容已有 test_cases 数据，缺失字段使用默认值
+          item.test_cases = (q.test_cases && q.test_cases.length > 0
+            ? q.test_cases
+            : [makeEmptyTestCase()]
+          ).map((tc) => ({
+            input: tc.input || tc.in || '',
+            output: tc.output || tc.expected || tc.out || '',
+            description: tc.description || tc.desc || '',
+          }))
+        }
+        return item
+      })
       if (form.questions.length > 0) {
         questionIdCounter = Math.max(...form.questions.map((q) => q.id)) + 1
       }
@@ -187,14 +321,75 @@ const loadAssignment = async () => {
 const addQuestion = () => {
   form.questions.push({
     id: questionIdCounter++,
+    question_type: 'essay',
     content: '',
     score: 10,
     standard_answer: '',
+    test_cases: [],
+    grading_rubric: '',
   })
 }
 
 const removeQuestion = (index) => {
   form.questions.splice(index, 1)
+}
+
+const handleTypeChange = (q) => {
+  if (isCodeType(q.question_type)) {
+    if (!q.test_cases || q.test_cases.length === 0) {
+      q.test_cases = [makeEmptyTestCase()]
+    }
+  } else {
+    q.test_cases = []
+  }
+  if (q.question_type !== 'report') {
+    q.grading_rubric = ''
+  }
+}
+
+const addTestCase = (q) => {
+  if (!q.test_cases) q.test_cases = []
+  q.test_cases.push(makeEmptyTestCase())
+}
+
+const removeTestCase = (q, index) => {
+  q.test_cases.splice(index, 1)
+}
+
+const getStandardAnswerLabel = (type) => {
+  if (type === 'python') return '参考实现（Python 代码）'
+  if (type === 'sql') return '参考 SQL 语句'
+  if (type === 'report') return '参考标准 / 评分要点'
+  return '标准答案'
+}
+
+const getStandardAnswerPlaceholder = (type) => {
+  if (type === 'python') return '请输入参考的 Python 实现代码'
+  if (type === 'sql') return '请输入参考的 SQL 语句'
+  if (type === 'report') return '请描述报告的评分要求、参考要点等'
+  return '请输入标准答案'
+}
+
+const getStandardAnswerRows = (type) => {
+  if (isCodeType(type)) return 6
+  if (type === 'report') return 5
+  return 3
+}
+
+const validateCodeQuestions = () => {
+  for (let i = 0; i < form.questions.length; i++) {
+    const q = form.questions[i]
+    if (isCodeType(q.question_type)) {
+      const valid = (q.test_cases || []).some(
+        (tc) => (tc.input || tc.output || tc.description || '').toString().trim()
+      )
+      if (!valid) {
+        message.error(`第 ${i + 1} 题（${QUESTION_TYPE_LABEL[q.question_type]}）必须至少填写一个非空测试用例`)
+        return false
+      }
+    }
+  }
+  return true
 }
 
 const handleSubmit = async () => {
@@ -204,6 +399,8 @@ const handleSubmit = async () => {
     return
   }
 
+  if (!validateCodeQuestions()) return
+
   submitting.value = true
   try {
     const data = {
@@ -212,12 +409,28 @@ const handleSubmit = async () => {
       start_time: form.start_time?.toISOString(),
       end_time: form.end_time?.toISOString(),
       total_score: totalScore.value,
-      questions: form.questions.map((q) => ({
-        id: q.id,
-        content: q.content,
-        score: q.score,
-        standard_answer: q.standard_answer,
-      })),
+      questions: form.questions.map((q) => {
+        const item = {
+          id: q.id,
+          question_type: q.question_type,
+          content: q.content,
+          score: q.score,
+          standard_answer: q.standard_answer,
+        }
+        if (isCodeType(q.question_type)) {
+          item.test_cases = (q.test_cases || [])
+            .filter((tc) => (tc.input || tc.output || tc.description || '').toString().trim())
+            .map((tc) => ({
+              input: tc.input || '',
+              output: tc.output || '',
+              description: tc.description || '',
+            }))
+        }
+        if (q.question_type === 'report' && q.grading_rubric) {
+          item.grading_rubric = q.grading_rubric
+        }
+        return item
+      }),
     }
     const res = await updateAssignment(assignmentId.value, data)
     if (res.success) {
@@ -253,5 +466,25 @@ onMounted(loadAssignment)
 .add-question-btn {
   margin-top: 8px;
   margin-bottom: 16px;
+}
+.code-input :deep(textarea) {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  background: #f6f8fa;
+}
+.test-cases-block {
+  margin-bottom: 16px;
+}
+.test-case-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.test-case-index {
+  display: inline-block;
+  width: 60px;
+  font-size: 13px;
+  color: #666;
+  flex-shrink: 0;
 }
 </style>

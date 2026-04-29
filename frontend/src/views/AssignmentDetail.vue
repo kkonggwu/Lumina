@@ -67,34 +67,68 @@
                 :key="q.id"
                 :header="`第 ${index + 1} 题（${q.score} 分）`"
               >
+                <template #extra>
+                  <a-tag :color="QUESTION_TYPE_COLOR[q.question_type || 'essay']">
+                    {{ QUESTION_TYPE_LABEL[q.question_type || 'essay'] }}
+                  </a-tag>
+                </template>
                 <a-descriptions :column="1" bordered size="small">
                   <a-descriptions-item label="题目内容">
                     <div style="white-space: pre-wrap">{{ q.content }}</div>
                   </a-descriptions-item>
-                  <a-descriptions-item label="标准答案">
-                    <div style="white-space: pre-wrap">{{ q.standard_answer || '未设置' }}</div>
+                  <a-descriptions-item :label="getStandardAnswerLabel(q.question_type)">
+                    <pre v-if="isCodeType(q.question_type)" class="code-block">{{ q.standard_answer || '未设置' }}</pre>
+                    <div v-else style="white-space: pre-wrap">{{ q.standard_answer || '未设置' }}</div>
                   </a-descriptions-item>
-                  <a-descriptions-item label="分析状态">
-                    <a-tag :color="q.analyzed ? 'green' : 'default'">
-                      {{ q.analyzed ? '已分析' : '未分析' }}
-                    </a-tag>
-                    <span v-if="q.analyzed && q.answer_keypoints?.length" style="margin-left: 8px; color: #999">
-                      {{ q.answer_keypoints.length }} 个关键点
-                    </span>
+                  <!-- 编程题：测试用例 -->
+                  <a-descriptions-item
+                    v-if="isCodeType(q.question_type)"
+                    label="测试用例"
+                  >
+                    <a-empty
+                      v-if="!q.test_cases || q.test_cases.length === 0"
+                      description="无测试用例"
+                      :image-style="{ height: '40px' }"
+                    />
+                    <ol v-else class="test-case-list">
+                      <li v-for="(tc, ti) in q.test_cases" :key="ti">
+                        <span v-if="tc.input"><strong>输入：</strong>{{ tc.input }}</span>
+                        <span v-if="tc.output" style="margin-left: 16px"><strong>期望：</strong>{{ tc.output }}</span>
+                        <span v-if="tc.description" style="margin-left: 16px; color: #999">{{ tc.description }}</span>
+                      </li>
+                    </ol>
                   </a-descriptions-item>
-                  <a-descriptions-item v-if="q.analyzed && q.answer_keypoints?.length" label="关键点">
-                    <a-tag
-                      v-for="(kp, ki) in q.answer_keypoints"
-                      :key="ki"
-                      color="blue"
-                      style="margin-bottom: 4px"
-                    >{{ typeof kp === 'string' ? kp : kp.point || kp.description || JSON.stringify(kp) }}</a-tag>
+                  <!-- 报告题：评分细则 -->
+                  <a-descriptions-item
+                    v-if="q.question_type === 'report' && q.grading_rubric"
+                    label="评分细则"
+                  >
+                    <div style="white-space: pre-wrap">{{ q.grading_rubric }}</div>
                   </a-descriptions-item>
-                  <a-descriptions-item label="操作">
-                    <a-button type="link" size="small" @click="openEditKeypoints(q)">
-                      编辑关键点
-                    </a-button>
-                  </a-descriptions-item>
+                  <!-- 文本题：关键点分析（代码/报告题不展示） -->
+                  <template v-if="!isCodeType(q.question_type) && q.question_type !== 'report'">
+                    <a-descriptions-item label="分析状态">
+                      <a-tag :color="q.analyzed ? 'green' : 'default'">
+                        {{ q.analyzed ? '已分析' : '未分析' }}
+                      </a-tag>
+                      <span v-if="q.analyzed && q.answer_keypoints?.length" style="margin-left: 8px; color: #999">
+                        {{ q.answer_keypoints.length }} 个关键点
+                      </span>
+                    </a-descriptions-item>
+                    <a-descriptions-item v-if="q.analyzed && q.answer_keypoints?.length" label="关键点">
+                      <a-tag
+                        v-for="(kp, ki) in q.answer_keypoints"
+                        :key="ki"
+                        color="blue"
+                        style="margin-bottom: 4px"
+                      >{{ typeof kp === 'string' ? kp : kp.point || kp.description || JSON.stringify(kp) }}</a-tag>
+                    </a-descriptions-item>
+                    <a-descriptions-item label="操作">
+                      <a-button type="link" size="small" @click="openEditKeypoints(q)">
+                        编辑关键点
+                      </a-button>
+                    </a-descriptions-item>
+                  </template>
                 </a-descriptions>
               </a-collapse-panel>
             </a-collapse>
@@ -150,13 +184,38 @@
 
           <a-card title="答题区" :bordered="false" style="margin-top: 16px">
             <div v-for="(q, index) in questions" :key="q.id" class="student-question">
-              <h4>第 {{ index + 1 }} 题（{{ q.score }} 分）</h4>
+              <div class="student-question-header">
+                <h4>
+                  第 {{ index + 1 }} 题（{{ q.score }} 分）
+                  <a-tag :color="QUESTION_TYPE_COLOR[q.question_type || 'essay']" style="margin-left: 8px">
+                    {{ QUESTION_TYPE_LABEL[q.question_type || 'essay'] }}
+                  </a-tag>
+                </h4>
+              </div>
               <div class="question-content">{{ q.content }}</div>
+
+              <!-- 编程题：展示测试用例 -->
+              <div
+                v-if="isCodeType(q.question_type) && q.test_cases?.length"
+                class="test-cases-preview"
+              >
+                <div class="test-cases-title">测试用例：</div>
+                <ol>
+                  <li v-for="(tc, ti) in q.test_cases" :key="ti">
+                    <span v-if="tc.input"><strong>输入：</strong>{{ tc.input }}</span>
+                    <span v-if="tc.output" style="margin-left: 12px"><strong>期望：</strong>{{ tc.output }}</span>
+                    <span v-if="tc.description" style="margin-left: 12px; color: #999">{{ tc.description }}</span>
+                  </li>
+                </ol>
+              </div>
+
+              <!-- 输入控件按题型分发 -->
               <a-textarea
                 v-model:value="studentAnswers[String(q.id)]"
-                :placeholder="`请输入第 ${index + 1} 题的答案`"
-                :rows="4"
+                :placeholder="getAnswerPlaceholder(q.question_type, index)"
+                :rows="getAnswerRows(q.question_type)"
                 :disabled="mySubmission?.submission_status === 2"
+                :class="{ 'code-input': isCodeType(q.question_type) }"
               />
             </div>
 
@@ -198,6 +257,44 @@ const authStore = useAuthStore()
 
 const isStudent = computed(() => authStore.isStudent)
 const assignmentId = computed(() => route.params.id)
+
+const QUESTION_TYPE_LABEL = {
+  essay: '论述题',
+  short_answer: '简答题',
+  python: 'Python',
+  sql: 'SQL',
+  report: '课程报告',
+}
+
+const QUESTION_TYPE_COLOR = {
+  essay: 'blue',
+  short_answer: 'cyan',
+  python: 'geekblue',
+  sql: 'purple',
+  report: 'gold',
+}
+
+const isCodeType = (t) => t === 'python' || t === 'sql'
+
+const getStandardAnswerLabel = (type) => {
+  if (type === 'python') return '参考实现（Python）'
+  if (type === 'sql') return '参考 SQL'
+  if (type === 'report') return '评分要求'
+  return '标准答案'
+}
+
+const getAnswerPlaceholder = (type, index) => {
+  if (type === 'python') return `请输入第 ${index + 1} 题的 Python 代码`
+  if (type === 'sql') return `请输入第 ${index + 1} 题的 SQL 语句`
+  if (type === 'report') return `请输入第 ${index + 1} 题的报告内容（建议至少 500 字）`
+  return `请输入第 ${index + 1} 题的答案`
+}
+
+const getAnswerRows = (type) => {
+  if (isCodeType(type)) return 12
+  if (type === 'report') return 16
+  return 4
+}
 
 const assignment = ref(null)
 const questions = ref([])
@@ -394,6 +491,54 @@ onMounted(loadData)
   background: #fafafa;
   border-radius: 6px;
   white-space: pre-wrap;
+  line-height: 1.6;
+}
+.student-question-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.student-question-header h4 {
+  margin: 0;
+}
+.test-cases-preview {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f6ffed;
+  border-left: 3px solid #52c41a;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.test-cases-preview ol {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+}
+.test-cases-title {
+  font-weight: 600;
+  color: #389e0d;
+}
+.test-case-list {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+.code-block {
+  margin: 0;
+  padding: 10px 12px;
+  background: #f6f8fa;
+  border-radius: 6px;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+}
+.code-input :deep(textarea) {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  background: #f6f8fa;
   line-height: 1.6;
 }
 </style>
