@@ -294,7 +294,9 @@ class CourseService:
         status: Optional[int] = None,
         is_public: Optional[bool] = None,
         limit: int = 20,
-        offset: int = 0
+        offset: int = 0,
+        user=None,
+        mine: bool = False
     ) -> Tuple[List[Course], int]:
         """
         获取课程列表
@@ -305,12 +307,35 @@ class CourseService:
             is_public: 是否公开（可选，用于筛选）
             limit: 返回数量限制
             offset: 偏移量
+            user: 当前用户（mine=True 时使用）
+            mine: 是否只返回当前用户有权限管理/参与的课程
         
         Returns:
             tuple: (课程列表, 总数量)
         """
         try:
             query = Course.objects.select_related('teacher').filter(is_deleted=False)
+
+            if mine and user is not None:
+                if not isinstance(user, UserModel):
+                    try:
+                        user = UserModel.objects.get(
+                            id=getattr(user, "id", None),
+                            is_deleted=UserModel.NOT_DELETED,
+                        )
+                    except UserModel.DoesNotExist:
+                        return [], 0
+
+                if user.user_type == UserModel.TEACHER:
+                    query = query.filter(teacher_id=user.id)
+                elif user.user_type == UserModel.STUDENT:
+                    enrolled_course_ids = Enrollment.objects.filter(
+                        student=user,
+                        enrollment_status=1,
+                        is_deleted=False,
+                    ).values_list('course_id', flat=True)
+                    query = query.filter(id__in=enrolled_course_ids, status=1)
+                # 管理员 mine=true 时仍返回全部课程，便于代管。
             
             # 按教师筛选
             if teacher_id:

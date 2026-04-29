@@ -1,7 +1,7 @@
 <template>
   <div class="users-container">
     <div class="page-header">
-      <h1>👥 用户管理</h1>
+      <h1>用户管理</h1>
       <div class="header-actions">
         <select v-model="filters.user_type" @change="loadUsers" class="filter-select">
           <option value="">全部用户</option>
@@ -314,19 +314,19 @@ onMounted(() => {
 
 .add-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s, box-shadow 0.2s;
 }
 
 .add-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
 
 .table-container {
@@ -465,7 +465,7 @@ onMounted(() => {
 .modal-content input:focus,
 .modal-content select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #2563eb;
 }
 
 .modal-actions {
@@ -491,13 +491,13 @@ onMounted(() => {
 }
 
 .btn-submit {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
 }
 
 .btn-submit:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
 </style>
 

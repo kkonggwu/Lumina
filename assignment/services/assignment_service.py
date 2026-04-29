@@ -7,7 +7,7 @@
 from typing import Tuple, Optional, List
 from decimal import Decimal
 
-from course.models import Assignment, Course
+from course.models import Assignment, Course, Enrollment
 from user.models import UserModel
 from utils.logger import get_logger
 
@@ -198,16 +198,39 @@ class AssignmentService:
             return False, f"发布作业失败: {str(e)}"
 
     @staticmethod
-    def get_assignment_detail(assignment_id: int) -> Tuple[bool, str, Optional[Assignment]]:
+    def get_assignment_detail(assignment_id: int, user=None) -> Tuple[bool, str, Optional[Assignment]]:
         """
         获取作业详情
         :param assignment_id: 作业 ID
+        :param user: 当前登录用户；学生只能查看自己已加入课程下已发布的作业
         :return: (success, message, assignment)
         """
         try:
+            if user is not None and not isinstance(user, UserModel):
+                try:
+                    user = UserModel.objects.get(id=getattr(user, "id", None), is_deleted=UserModel.NOT_DELETED)
+                except UserModel.DoesNotExist:
+                    return False, "用户不存在或未登录", None
+
             assignment = Assignment.objects.select_related('course', 'teacher').get(
                 id=assignment_id, is_deleted=False
             )
+
+            if user is not None:
+                if user.user_type == UserModel.STUDENT:
+                    enrolled = Enrollment.objects.filter(
+                        course=assignment.course,
+                        student=user,
+                        enrollment_status=1,
+                        is_deleted=False,
+                    ).exists()
+                    if not enrolled:
+                        return False, "未加入该课程，无法查看该作业", None
+                    if assignment.assignment_status != 1:
+                        return False, "作业未发布，无法查看", None
+                elif user.user_type == UserModel.TEACHER and assignment.teacher_id != user.id:
+                    return False, "只能查看自己课程下的作业", None
+
             return True, "获取成功", assignment
         except Assignment.DoesNotExist:
             return False, "作业不存在", None
@@ -291,7 +314,15 @@ class AssignmentService:
                 queryset = queryset.filter(course_id=course_id)
 
             if user.user_type == UserModel.STUDENT:
-                queryset = queryset.filter(assignment_status=1)
+                enrolled_course_ids = Enrollment.objects.filter(
+                    student=user,
+                    enrollment_status=1,
+                    is_deleted=False,
+                ).values_list('course_id', flat=True)
+                queryset = queryset.filter(
+                    assignment_status=1,
+                    course_id__in=enrolled_course_ids,
+                )
             elif user.user_type == UserModel.TEACHER:
                 queryset = queryset.filter(teacher=user)
 

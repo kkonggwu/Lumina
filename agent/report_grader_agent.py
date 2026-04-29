@@ -5,6 +5,9 @@
 @Description: 课程报告题目专用评分 Agent
               从结构完整性、内容质量、语言表达、创新思考四个维度对课程报告进行评分
               支持长文本自动摘要后评分
+@Author: kkonggwu
+@Date: 2026/4/30
+@Version: 1.0
 """
 import json
 import logging

@@ -11,15 +11,18 @@ const routes = [
   {
     path: "/",
     component: () => import("@/layouts/MainLayout.vue"),
-    redirect: "/chat",
+    redirect: "/courses",
     meta: { requiresAuth: true },
     children: [
+      // 智能问答功能暂时下线：前端路由保留注释，后续需要恢复时取消注释并将根路由 redirect 改回 /chat。
+      /*
       {
         path: "chat",
         name: "Chat",
         component: () => import("@/views/Chat.vue"),
         meta: { title: "智能问答" },
       },
+      */
       {
         path: "users",
         name: "Users",
@@ -110,7 +113,7 @@ router.beforeEach((to, from, next) => {
     const userType = authStore.userType;
     if (!to.meta.requiresRole.includes(userType)) {
       // 学生不能访问用户管理页面
-      next("/chat");
+      next("/courses");
       return;
     }
   }

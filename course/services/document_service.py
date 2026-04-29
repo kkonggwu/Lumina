@@ -12,7 +12,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.core.exceptions import ValidationError
 from django.conf import settings
 
-from course.models import Document, Course
+from course.models import Document, Course, Enrollment
 from user.models import UserModel
 from user.user_service import UserService
 from utils.langchain_milvus_manager import LangChainMilvusManager
@@ -313,6 +313,7 @@ class DocumentService:
     def list_documents(
         course_id: Optional[int] = None,
         user_id: Optional[int] = None,
+        user=None,
         limit: int = 20,
         offset: int = 0
     ) -> Tuple[List[Document], int]:
@@ -322,6 +323,7 @@ class DocumentService:
         Args:
             course_id: 课程ID（可选）
             user_id: 用户ID（可选）
+            user: 当前登录用户；用于限制可见课程范围
             limit: 返回数量限制
             offset: 偏移量
         
@@ -331,6 +333,26 @@ class DocumentService:
         try:
             # 使用select_related预加载关联对象，避免N+1查询问题
             query = Document.objects.select_related('course', 'uploader').filter(is_deleted=False)
+
+            if user is not None:
+                if not isinstance(user, UserModel):
+                    try:
+                        user = UserModel.objects.get(
+                            id=getattr(user, "id", None),
+                            is_deleted=UserModel.NOT_DELETED,
+                        )
+                    except UserModel.DoesNotExist:
+                        return [], 0
+
+                if user.user_type == UserModel.TEACHER:
+                    query = query.filter(course__teacher_id=user.id)
+                elif user.user_type == UserModel.STUDENT:
+                    enrolled_course_ids = Enrollment.objects.filter(
+                        student=user,
+                        enrollment_status=1,
+                        is_deleted=False,
+                    ).values_list('course_id', flat=True)
+                    query = query.filter(course_id__in=enrolled_course_ids)
             
             # 按课程筛选
             if course_id:

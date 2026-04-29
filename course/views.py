@@ -463,6 +463,7 @@ class DocumentListView(APIView):
             # 调用服务层获取文档列表（使用静态方法，避免初始化Milvus）
             documents, total = DocumentService.list_documents(
                 course_id=course_id,
+                user=request.user,
                 limit=page_size,
                 offset=offset
             )
@@ -587,6 +588,7 @@ class CourseListCreateView(APIView):
             teacher_id = request.GET.get("teacher_id")
             status_param = request.GET.get("status")
             is_public_param = request.GET.get("is_public")
+            mine_param = request.GET.get("mine")
             page = int(request.GET.get("page", 1))
             page_size = int(request.GET.get("page_size", 20))
             
@@ -615,6 +617,10 @@ class CourseListCreateView(APIView):
                 is_public_param = is_public_param.lower() in ['true', '1', 'yes']
             else:
                 is_public_param = None
+
+            mine = False
+            if mine_param:
+                mine = mine_param.lower() in ['true', '1', 'yes']
             
             # 计算偏移量
             offset = (page - 1) * page_size
@@ -625,7 +631,9 @@ class CourseListCreateView(APIView):
                 status=status_param,
                 is_public=is_public_param,
                 limit=page_size,
-                offset=offset
+                offset=offset,
+                user=request.user,
+                mine=mine,
             )
             
             # 序列化数据

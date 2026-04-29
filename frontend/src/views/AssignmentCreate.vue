@@ -302,7 +302,7 @@ const rules = {
 const loadCourses = async () => {
   coursesLoading.value = true
   try {
-    const res = await getCourseList()
+    const res = await getCourseList({ mine: true, page_size: 100 })
     if (res.success) {
       courseOptions.value = (res.data || []).map((c) => ({
         value: c.id,

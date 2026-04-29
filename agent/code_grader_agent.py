@@ -4,6 +4,9 @@
 @FileName: code_grader_agent.py
 @Description: Python 编程题与 SQL 语句题的专用评分 Agent
               使用 LLM 从正确性、逻辑性、规范性/高效性三个维度对代码进行评分
+@Author: kkonggwu
+@Date: 2026/4/30
+@Version: 1.0
 """
 import json
 import logging

@@ -2,27 +2,84 @@
   <div class="assignment-list-container">
     <a-page-header
       title="作业管理"
-      :sub-title="selectedCourseName || '全部作业'"
+      :sub-title="selectedCourseName || '请选择课程查看作业'"
     >
       <template #extra>
-        <a-select
-          v-model:value="selectedCourseId"
-          placeholder="按课程筛选"
-          allow-clear
-          show-search
-          option-filter-prop="label"
-          style="width: 240px; margin-right: 12px"
-          :options="courseOptions"
-          @change="onCourseChange"
-        />
-        <a-button v-if="!isStudent" type="primary" @click="goCreate">
+        <a-button v-if="selectedCourseId" @click="backToCourses">
+          返回课程列表
+        </a-button>
+        <a-button v-if="!isStudent && selectedCourseId" type="primary" @click="goCreate">
           <template #icon><plus-outlined /></template>
           创建作业
         </a-button>
       </template>
     </a-page-header>
 
-    <a-card :bordered="false">
+    <!-- 课程卡片列表：先按课程分类，进入课程后再展示作业 -->
+    <a-card v-if="!selectedCourseId" :bordered="false">
+      <a-spin :spinning="coursesLoading">
+        <a-empty v-if="!coursesLoading && courses.length === 0" description="暂无课程" />
+        <a-row v-else :gutter="[16, 16]">
+          <a-col
+            v-for="course in courses"
+            :key="course.id"
+            :xs="24"
+            :sm="12"
+            :lg="8"
+            :xl="6"
+          >
+            <a-card
+              hoverable
+              class="course-card"
+              @click="selectCourse(course)"
+            >
+              <template #title>
+                <div class="course-card-title">
+                  <span>{{ course.course_name }}</span>
+                  <a-tag :color="course.status === 1 ? 'green' : 'orange'">
+                    {{ course.status_display || (course.status === 1 ? '已发布' : '草稿') }}
+                  </a-tag>
+                </div>
+              </template>
+
+              <div class="course-meta">
+                <div class="meta-line">
+                  <span class="meta-label">教师：</span>
+                  <span>{{ course.teacher_name || '-' }}</span>
+                </div>
+                <div v-if="course.academic_year" class="meta-line">
+                  <span class="meta-label">学年：</span>
+                  <span>{{ course.academic_year }}</span>
+                </div>
+                <div v-if="course.semester_display" class="meta-line">
+                  <span class="meta-label">学期：</span>
+                  <span>{{ course.semester_display }}</span>
+                </div>
+                <div v-if="!isStudent" class="meta-line">
+                  <span class="meta-label">学生：</span>
+                  <span>{{ course.student_count || 0 }} / {{ course.max_students || '-' }}</span>
+                </div>
+                <div v-if="!isStudent && course.invite_code" class="meta-line">
+                  <span class="meta-label">邀请码：</span>
+                  <a-tag color="blue">{{ course.invite_code }}</a-tag>
+                </div>
+              </div>
+
+              <div v-if="course.course_description" class="course-description">
+                {{ formatCourseDescription(course.course_description) }}
+              </div>
+
+              <template #actions>
+                <span @click.stop="selectCourse(course)">查看作业</span>
+                <span v-if="!isStudent" @click.stop="goCreateForCourse(course.id)">创建作业</span>
+              </template>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-spin>
+    </a-card>
+
+    <a-card v-else :bordered="false">
       <a-table
         :columns="columns"
         :data-source="assignments"
@@ -114,8 +171,10 @@ const isStudent = computed(() => authStore.isStudent)
 
 const assignments = ref([])
 const loading = ref(false)
+const coursesLoading = ref(false)
 const analyzingId = ref(null)
 
+const courses = ref([])
 const courseOptions = ref([])
 const selectedCourseId = ref(route.query.course_id ? Number(route.query.course_id) : undefined)
 
@@ -142,24 +201,31 @@ const columns = computed(() => {
 })
 
 const loadCourses = async () => {
+  coursesLoading.value = true
   try {
-    const res = await getCourseList()
+    const res = await getCourseList({ mine: true, page_size: 100 })
     if (res.success) {
-      courseOptions.value = (res.data || []).map((c) => ({
+      courses.value = res.data || []
+      courseOptions.value = courses.value.map((c) => ({
         value: c.id,
         label: c.course_name,
       }))
     }
   } catch {
     // silent
+  } finally {
+    coursesLoading.value = false
   }
 }
 
 const loadAssignments = async () => {
+  if (!selectedCourseId.value) {
+    assignments.value = []
+    return
+  }
   loading.value = true
   try {
-    const params = {}
-    if (selectedCourseId.value) params.course_id = selectedCourseId.value
+    const params = { course_id: selectedCourseId.value }
     const res = await getAssignmentList(params)
     if (res.success) {
       assignments.value = res.data || []
@@ -173,8 +239,16 @@ const loadAssignments = async () => {
   }
 }
 
-const onCourseChange = () => {
-  loadAssignments()
+const selectCourse = async (course) => {
+  selectedCourseId.value = course.id
+  router.replace({ name: route.name, query: { course_id: course.id } })
+  await loadAssignments()
+}
+
+const backToCourses = () => {
+  selectedCourseId.value = undefined
+  assignments.value = []
+  router.replace({ name: route.name, query: {} })
 }
 
 const handlePublish = async (id) => {
@@ -228,9 +302,17 @@ const formatDate = (str) => {
   return new Date(str).toLocaleString('zh-CN')
 }
 
+const formatCourseDescription = (text) => {
+  if (!text) return ''
+  return text.length > 80 ? `${text.slice(0, 80)}...` : text
+}
+
 const goCreate = () => {
   const query = selectedCourseId.value ? { course_id: selectedCourseId.value } : {}
   router.push({ name: 'AssignmentCreate', query })
+}
+const goCreateForCourse = (courseId) => {
+  router.push({ name: 'AssignmentCreate', query: { course_id: courseId } })
 }
 const goDetail = (id) => router.push({ name: 'AssignmentDetail', params: { id } })
 const goEdit = (id) => router.push({ name: 'AssignmentEdit', params: { id } })
@@ -239,7 +321,9 @@ const goMyReport = (id) => router.push({ name: 'GradeReport', params: { id } })
 
 onMounted(async () => {
   await loadCourses()
-  await loadAssignments()
+  if (selectedCourseId.value) {
+    await loadAssignments()
+  }
 })
 </script>
 
@@ -248,5 +332,33 @@ onMounted(async () => {
   background: #fff;
   border-radius: 8px;
   padding: 24px;
+}
+.course-card {
+  height: 100%;
+}
+.course-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.course-meta {
+  min-height: 96px;
+}
+.meta-line {
+  margin-bottom: 6px;
+  color: rgba(0, 0, 0, 0.75);
+}
+.meta-label {
+  color: rgba(0, 0, 0, 0.45);
+}
+.course-description {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border-radius: 6px;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.6;
+  min-height: 48px;
 }
 </style>

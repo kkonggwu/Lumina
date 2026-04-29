@@ -682,7 +682,7 @@ onMounted(() => {
   padding: 4px 12px;
   border-radius: 6px;
   font-weight: bold;
-  color: #667eea;
+  color: #2563eb;
   display: inline-block;
 }
 
@@ -840,7 +840,7 @@ onMounted(() => {
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #2563eb;
 }
 
 .form-group input[type="checkbox"] {
@@ -885,7 +885,7 @@ onMounted(() => {
 }
 
 .btn-submit {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
 }
 

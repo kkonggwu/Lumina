@@ -2,8 +2,8 @@
   <div class="login-container">
     <div class="login-box">
       <div class="login-header">
-        <h1>🌟 Lumina</h1>
-        <p>高校课程管理RAG智能问答系统</p>
+        <h1>Lumina</h1>
+        <p>高校课程与作业管理系统</p>
       </div>
       
       <div class="tabs">
@@ -183,17 +183,20 @@ const handleRegister = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    radial-gradient(circle at top left, rgba(22, 119, 255, 0.16), transparent 34%),
+    linear-gradient(135deg, #eef4ff 0%, #f7f9fc 48%, #eaf1ff 100%);
   padding: 20px;
 }
 
 .login-box {
   background: white;
-  border-radius: 20px;
+  border-radius: 16px;
   padding: 40px;
   width: 100%;
   max-width: 450px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.12);
   animation: slideUp 0.5s ease-out;
 }
 
@@ -214,10 +217,10 @@ const handleRegister = async () => {
 }
 
 .login-header h1 {
-  font-size: 36px;
-  color: #667eea;
+  font-size: 34px;
+  color: #111827;
   margin-bottom: 10px;
-  font-weight: bold;
+  font-weight: 700;
 }
 
 .login-header p {
@@ -245,8 +248,8 @@ const handleRegister = async () => {
 }
 
 .tab.active {
-  color: #667eea;
-  font-weight: bold;
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .tab.active::after {
@@ -256,7 +259,7 @@ const handleRegister = async () => {
   left: 0;
   right: 0;
   height: 2px;
-  background: #667eea;
+  background: #2563eb;
 }
 
 .form {
@@ -283,32 +286,32 @@ const handleRegister = async () => {
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 14px;
-  transition: all 0.3s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .submit-btn {
   padding: 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s, box-shadow 0.2s;
   margin-top: 10px;
 }
 
 .submit-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
 
 .submit-btn:disabled {

@@ -3,7 +3,7 @@
     <!-- 侧边栏 -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>🌟 Lumina</h2>
+        <h2>Lumina</h2>
         <p class="user-info">
           <span class="user-name">{{ userInfo?.nickname || userInfo?.username }}</span>
           <span class="user-type">{{ userTypeName }}</span>
@@ -11,35 +11,37 @@
       </div>
 
       <nav class="sidebar-nav">
+        <!-- 智能问答功能暂时下线：保留代码注释，后续需要恢复时取消注释即可。
         <router-link to="/chat" class="nav-item" :class="{ active: $route.path === '/chat' }">
           <span class="nav-icon">💬</span>
           <span class="nav-text">智能问答</span>
         </router-link>
+        -->
 
         <router-link to="/courses" class="nav-item" :class="{ active: $route.path.startsWith('/courses') }">
-          <span class="nav-icon">📖</span>
+          <span class="nav-icon">课</span>
           <span class="nav-text">课程管理</span>
         </router-link>
 
         <router-link to="/assignments" class="nav-item" :class="{ active: $route.path.startsWith('/assignments') }">
-          <span class="nav-icon">📝</span>
+          <span class="nav-icon">作</span>
           <span class="nav-text">作业管理</span>
         </router-link>
 
         <router-link to="/documents" class="nav-item" :class="{ active: $route.path === '/documents' }">
-          <span class="nav-icon">📚</span>
+          <span class="nav-icon">文</span>
           <span class="nav-text">文档管理</span>
         </router-link>
 
         <router-link v-if="!isStudent" to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
-          <span class="nav-icon">👥</span>
+          <span class="nav-icon">用</span>
           <span class="nav-text">用户管理</span>
         </router-link>
       </nav>
 
       <div class="sidebar-footer">
         <button @click="handleLogout" class="logout-btn">
-          <span class="nav-icon">🚪</span>
+          <span class="nav-icon">退</span>
           <span class="nav-text">退出登录</span>
         </button>
       </div>
@@ -83,27 +85,29 @@ const handleLogout = () => {
 .main-layout {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #f5f7fb;
 }
 
 .sidebar {
-  width: 260px;
-  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  width: 248px;
+  background: #001529;
+  color: rgba(255, 255, 255, 0.88);
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 2px 0 12px rgba(0, 21, 41, 0.18);
 }
 
 .sidebar-header {
-  padding: 30px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 28px 22px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar-header h2 {
-  font-size: 24px;
-  margin-bottom: 15px;
-  font-weight: bold;
+  font-size: 22px;
+  margin-bottom: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #ffffff;
 }
 
 .user-info {
@@ -119,9 +123,9 @@ const handleLogout = () => {
 }
 
 .user-type {
-  opacity: 0.8;
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.12);
   padding: 4px 8px;
   border-radius: 12px;
   display: inline-block;
@@ -138,25 +142,35 @@ const handleLogout = () => {
   align-items: center;
   gap: 12px;
   padding: 15px 20px;
-  color: white;
+  color: rgba(255, 255, 255, 0.78);
   text-decoration: none;
-  transition: all 0.3s;
-  margin: 5px 10px;
-  border-radius: 12px;
+  transition: background-color 0.2s, color 0.2s;
+  margin: 4px 12px;
+  border-radius: 10px;
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateX(5px);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.2);
-  font-weight: bold;
+  background: #1677ff;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .nav-icon {
-  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .nav-text {
@@ -165,7 +179,7 @@ const handleLogout = () => {
 
 .sidebar-footer {
   padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .logout-btn {
@@ -174,18 +188,18 @@ const handleLogout = () => {
   gap: 12px;
   width: 100%;
   padding: 15px 20px;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
   transition: all 0.3s;
 }
 
 .logout-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateX(5px);
+  background: rgba(255, 77, 79, 0.16);
+  color: #ffccc7;
 }
 
 .main-content {

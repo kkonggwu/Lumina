@@ -1,7 +1,7 @@
 <template>
   <div class="courses-container">
     <div class="page-header">
-      <h1>📖 课程管理</h1>
+      <h1>课程管理</h1>
       <div class="header-actions">
         <!-- 筛选条件 -->
         <div class="filters">
@@ -639,26 +639,26 @@ onMounted(() => {
 .filter-input:focus,
 .filter-select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #2563eb;
 }
 
 .create-btn,
 .join-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s, box-shadow 0.2s;
 }
 
 .create-btn:hover,
 .join-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
 
 .courses-grid {
@@ -680,7 +680,7 @@ onMounted(() => {
 .course-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-  border-color: #667eea;
+  border-color: #2563eb;
 }
 
 .course-header {
@@ -777,7 +777,7 @@ onMounted(() => {
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: bold;
-  color: #667eea;
+  color: #2563eb;
 }
 
 .course-description {
@@ -938,7 +938,7 @@ onMounted(() => {
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #2563eb;
 }
 
 .form-group input[type="checkbox"] {
@@ -968,7 +968,7 @@ onMounted(() => {
 }
 
 .btn-submit {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2563eb;
   color: white;
 }
 

@@ -1,23 +1,95 @@
 <template>
     <div class="documents-container">
         <div class="page-header">
-            <h1>📚 文档管理</h1>
+            <h1>文档管理</h1>
             <div class="header-actions">
-                <input v-model="filters.course_id" type="number" placeholder="课程ID筛选" class="filter-input"
-                    @input="loadDocuments" />
-                <button @click="showUploadModal = true" class="upload-btn" v-if="!isStudent">
+                <template v-if="!selectedCourse">
+                    <input
+                        v-model="courseNameKeyword"
+                        type="text"
+                        placeholder="按课程名称筛选"
+                        class="filter-input course-name-filter"
+                    />
+                </template>
+                <template v-else>
+                    <button @click="backToCourses" class="back-btn">返回课程列表</button>
+                </template>
+                <button @click="openUploadModal" class="upload-btn" v-if="!isStudent && selectedCourse">
                     + 上传文档
                 </button>
             </div>
         </div>
 
-        <div class="table-container">
+        <!-- 课程卡片列表：先选择课程，再查看该课程文档 -->
+        <div v-if="!selectedCourse" class="course-grid-container">
+            <div v-if="coursesLoading" class="loading">课程加载中...</div>
+            <div v-if="!coursesLoading && filteredCourses.length === 0" class="empty">暂无课程</div>
+
+            <div v-if="!coursesLoading && filteredCourses.length > 0" class="course-grid">
+                <div
+                    v-for="course in filteredCourses"
+                    :key="course.id"
+                    class="course-card"
+                    @click="selectCourse(course)"
+                >
+                    <div class="course-card-header">
+                        <h3>{{ course.course_name }}</h3>
+                        <span :class="['course-status', `course-status-${course.status}`]">
+                            {{ course.status_display || (course.status === 1 ? '已发布' : '草稿') }}
+                        </span>
+                    </div>
+
+                    <div class="course-card-body">
+                        <div class="course-meta-line">
+                            <span class="course-meta-label">课程老师：</span>
+                            <span>{{ course.teacher_name || '-' }}</span>
+                        </div>
+                        <div class="course-meta-line" v-if="course.academic_year">
+                            <span class="course-meta-label">学年：</span>
+                            <span>{{ course.academic_year }}</span>
+                        </div>
+                        <div class="course-meta-line" v-if="course.semester_display">
+                            <span class="course-meta-label">学期：</span>
+                            <span>{{ course.semester_display }}</span>
+                        </div>
+                        <div class="course-meta-line" v-if="!isStudent">
+                            <span class="course-meta-label">学生数：</span>
+                            <span>{{ course.student_count || 0 }} / {{ course.max_students || '-' }}</span>
+                        </div>
+                        <div class="course-meta-line" v-if="!isStudent && course.invite_code">
+                            <span class="course-meta-label">邀请码：</span>
+                            <span class="invite-code">{{ course.invite_code }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="course.course_description" class="course-card-desc">
+                        {{ formatCourseDescription(course.course_description) }}
+                    </div>
+
+                    <div class="course-card-footer">
+                        点击查看该课程文档
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-else class="table-container">
+            <div class="selected-course-bar">
+                <div>
+                    <div class="selected-course-title">{{ selectedCourse.course_name }}</div>
+                    <div class="selected-course-subtitle">
+                        课程老师：{{ selectedCourse.teacher_name || '-' }}
+                        <span v-if="selectedCourse.academic_year"> · {{ selectedCourse.academic_year }}</span>
+                        <span v-if="selectedCourse.semester_display"> · {{ selectedCourse.semester_display }}</span>
+                    </div>
+                </div>
+            </div>
+
             <table class="documents-table">
                 <thead>
                     <tr>
                         <th>ID</th>
                         <th>文件名</th>
-                        <th>课程名称</th>
                         <th>上传者</th>
                         <th>文件大小</th>
                         <th>文件类型</th>
@@ -30,7 +102,6 @@
                     <tr v-for="doc in documents" :key="doc.id">
                         <td>{{ doc.id }}</td>
                         <td>{{ doc.file_name }}</td>
-                        <td>{{ doc.course_name || '-' }}</td>
                         <td>{{ doc.uploader_name || '-' }}</td>
                         <td>{{ formatFileSize(doc.file_size) }}</td>
                         <td>{{ doc.file_type || '-' }}</td>
@@ -74,8 +145,11 @@
                 <h2>上传文档</h2>
                 <form @submit.prevent="handleUpload">
                     <div class="form-group">
-                        <label>课程ID <span class="required">*</span></label>
-                        <input v-model="uploadForm.course_id" type="number" required placeholder="请输入课程ID" />
+                        <label>所属课程</label>
+                        <div class="readonly-course">
+                            {{ selectedCourse?.course_name || '-' }}
+                            <span>（课程老师：{{ selectedCourse?.teacher_name || '-' }}）</span>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>选择文件 <span class="required">*</span></label>
@@ -162,8 +236,10 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { getCourseList } from '@/api/course'
 import {
     getDocumentList,
     uploadDocument,
@@ -171,8 +247,15 @@ import {
     deleteDocument
 } from '@/api/document'
 
+const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const isStudent = computed(() => authStore.isStudent)
+
+const courses = ref([])
+const coursesLoading = ref(false)
+const selectedCourse = ref(null)
+const courseNameKeyword = ref('')
 
 const documents = ref([])
 const loading = ref(false)
@@ -183,8 +266,14 @@ const currentDocument = ref(null)
 const selectedFile = ref(null)
 const fileInput = ref(null)
 
-const filters = ref({
-    course_id: ''
+const selectedCourseId = computed(() => selectedCourse.value?.id || null)
+
+const filteredCourses = computed(() => {
+    const keyword = courseNameKeyword.value.trim().toLowerCase()
+    if (!keyword) return courses.value
+    return courses.value.filter((course) =>
+        (course.course_name || '').toLowerCase().includes(keyword)
+    )
 })
 
 const page = ref(1)
@@ -196,15 +285,62 @@ const uploadForm = ref({
     file: null
 })
 
+const loadCourses = async () => {
+    coursesLoading.value = true
+    try {
+        const response = await getCourseList({ mine: true, page_size: 100 })
+        if (response.success) {
+            courses.value = response.data || []
+            const queryCourseId = route.query.course_id ? Number(route.query.course_id) : null
+            if (queryCourseId) {
+                const found = courses.value.find((course) => course.id === queryCourseId)
+                if (found) {
+                    await selectCourse(found, false)
+                }
+            }
+        } else {
+            alert(response.message || '加载课程列表失败')
+        }
+    } catch (error) {
+        console.error('加载课程列表失败:', error)
+        alert(error.message || '加载课程列表失败')
+    } finally {
+        coursesLoading.value = false
+    }
+}
+
+const selectCourse = async (course, syncRoute = true) => {
+    selectedCourse.value = course
+    page.value = 1
+    documents.value = []
+    total.value = 0
+    if (syncRoute) {
+        router.replace({ name: route.name, query: { course_id: course.id } })
+    }
+    await loadDocuments()
+}
+
+const backToCourses = () => {
+    selectedCourse.value = null
+    documents.value = []
+    total.value = 0
+    page.value = 1
+    router.replace({ name: route.name, query: {} })
+}
+
 const loadDocuments = async () => {
+    if (!selectedCourseId.value) {
+        documents.value = []
+        total.value = 0
+        return
+    }
+
     loading.value = true
     try {
         const params = {
             page: page.value,
-            page_size: pageSize.value
-        }
-        if (filters.value.course_id) {
-            params.course_id = parseInt(filters.value.course_id)
+            page_size: pageSize.value,
+            course_id: selectedCourseId.value
         }
 
         const response = await getDocumentList(params)
@@ -243,6 +379,20 @@ const getStatusName = (status) => {
     return statusMap[status] || '未知'
 }
 
+const formatCourseDescription = (text) => {
+    if (!text) return ''
+    return text.length > 90 ? `${text.slice(0, 90)}...` : text
+}
+
+const openUploadModal = () => {
+    if (!selectedCourse.value) {
+        alert('请先选择课程')
+        return
+    }
+    uploadForm.value.course_id = selectedCourse.value.id
+    showUploadModal.value = true
+}
+
 const handleFileSelect = (event) => {
     const file = event.target.files[0]
     if (file) {
@@ -260,15 +410,15 @@ const handleFileSelect = (event) => {
 }
 
 const handleUpload = async () => {
-    if (!uploadForm.value.course_id || !uploadForm.value.file) {
-        alert('请填写课程ID并选择文件')
+    if (!selectedCourseId.value || !uploadForm.value.file) {
+        alert('请先选择课程并选择文件')
         return
     }
 
     uploading.value = true
     try {
         const formData = new FormData()
-        formData.append('course_id', uploadForm.value.course_id)
+        formData.append('course_id', selectedCourseId.value)
         formData.append('file', uploadForm.value.file)
 
         const response = await uploadDocument(formData)
@@ -290,7 +440,7 @@ const handleUpload = async () => {
 const closeUploadModal = () => {
     showUploadModal.value = false
     uploadForm.value = {
-        course_id: '',
+        course_id: selectedCourseId.value || '',
         file: null
     }
     selectedFile.value = null
@@ -444,7 +594,7 @@ const changePage = (newPage) => {
 }
 
 onMounted(() => {
-    loadDocuments()
+    loadCourses()
 })
 </script>
 
@@ -484,26 +634,171 @@ onMounted(() => {
     width: 150px;
 }
 
+.course-name-filter {
+    width: 240px;
+}
+
 .filter-input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2563eb;
 }
 
 .upload-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #2563eb;
     color: white;
     border: none;
     border-radius: 8px;
     font-size: 14px;
-    font-weight: bold;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.upload-btn:hover {
+    background: #1d4ed8;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
+}
+
+.back-btn {
+    padding: 10px 18px;
+    background: #f0f2f5;
+    color: #333;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
     cursor: pointer;
     transition: all 0.3s;
 }
 
-.upload-btn:hover {
+.back-btn:hover {
+    background: #e6e8eb;
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.course-grid-container {
+    min-height: 240px;
+}
+
+.course-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+}
+
+.course-card {
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    padding: 18px;
+    cursor: pointer;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: all 0.25s;
+}
+
+.course-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.16);
+    border-color: #b7c3ff;
+}
+
+.course-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.course-card-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #222;
+    line-height: 1.4;
+}
+
+.course-status {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.course-status-1 {
+    background: #e8f7ee;
+    color: #2ed573;
+}
+
+.course-status-0 {
+    background: #fff4e5;
+    color: #ffa502;
+}
+
+.course-card-body {
+    min-height: 118px;
+}
+
+.course-meta-line {
+    margin-bottom: 8px;
+    color: #444;
+    font-size: 14px;
+}
+
+.course-meta-label {
+    color: #888;
+}
+
+.invite-code {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #e5f3ff;
+    color: #3742fa;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.course-card-desc {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #fafafa;
+    border-radius: 8px;
+    color: #666;
+    line-height: 1.6;
+    min-height: 50px;
+}
+
+.course-card-footer {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+    color: #2563eb;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.selected-course-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    background: #f6f8ff;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+}
+
+.selected-course-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #222;
+}
+
+.selected-course-subtitle {
+    margin-top: 4px;
+    color: #666;
+    font-size: 13px;
 }
 
 .table-container {
@@ -687,9 +982,23 @@ onMounted(() => {
     font-size: 14px;
 }
 
+.readonly-course {
+    padding: 10px 12px;
+    background: #f6f8ff;
+    border: 1px solid #dfe6ff;
+    border-radius: 8px;
+    color: #333;
+    line-height: 1.6;
+}
+
+.readonly-course span {
+    color: #666;
+    font-size: 13px;
+}
+
 .form-group input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2563eb;
 }
 
 .file-info {
@@ -763,7 +1072,7 @@ onMounted(() => {
 }
 
 .btn-submit {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #2563eb;
     color: white;
 }
 </style>

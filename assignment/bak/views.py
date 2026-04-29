@@ -67,7 +67,10 @@ class AssignmentDetailUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, assignment_id):
-        success, message, assignment = AssignmentService.get_assignment_detail(assignment_id)
+        success, message, assignment = AssignmentService.get_assignment_detail(
+            assignment_id,
+            user=request.user,
+        )
         if not success:
             return JsonResponse({"success": False, "message": message}, status=404)
 
