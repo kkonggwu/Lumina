@@ -10,6 +10,7 @@ import string
 from typing import Tuple, Optional, List
 from django.db import IntegrityError
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 from course.models import Course, Enrollment
 from user.models import UserModel
@@ -397,17 +398,24 @@ class EnrollmentService:
             if course.status == 0:  # 草稿状态
                 return False, "课程尚未发布，无法加入", None
             
-            # 检查是否已经加入
+            # 检查是否存在历史选课记录。
+            # Enrollment 表对 (course, student) 有唯一约束，退出课程后记录会被逻辑删除；
+            # 再次加入时必须复用这条历史记录，而不是创建新记录。
             existing_enrollment = Enrollment.objects.filter(
                 course_id=course.id,
                 student_id=student_id,
-                is_deleted=False
             ).first()
             
             if existing_enrollment:
-                if existing_enrollment.enrollment_status == 1:  # 已加入
+                if (
+                    existing_enrollment.enrollment_status == 1
+                    and not existing_enrollment.is_deleted
+                ):  # 已加入
                     return False, "您已经加入该课程", None
-                elif existing_enrollment.enrollment_status == 0:  # 待审核
+                elif (
+                    existing_enrollment.enrollment_status == 0
+                    and not existing_enrollment.is_deleted
+                ):  # 待审核
                     return False, "您的加入申请正在审核中", None
             
             # 检查课程人数是否已满
@@ -419,6 +427,22 @@ class EnrollmentService:
             
             if current_enrollments >= course.max_students:
                 return False, "课程人数已满", None
+
+            if existing_enrollment:
+                existing_enrollment.enrollment_status = 1
+                existing_enrollment.is_deleted = False
+                existing_enrollment.joined_at = timezone.now()
+                existing_enrollment.save(update_fields=[
+                    'enrollment_status',
+                    'is_deleted',
+                    'joined_at',
+                ])
+
+                logger.info(
+                    f"学生 {student_id} 重新加入课程 {course.id} "
+                    f"(邀请码: {invite_code}, 选课记录: {existing_enrollment.id})"
+                )
+                return True, "成功重新加入课程", existing_enrollment
             
             # 创建选课记录
             enrollment = Enrollment(
@@ -433,7 +457,10 @@ class EnrollmentService:
             return True, "成功加入课程", enrollment
             
         except IntegrityError:
-            return False, "您已经加入该课程", None
+            logger.warning(
+                f"加入课程触发唯一约束: student_id={student_id}, invite_code={invite_code}"
+            )
+            return False, "您已存在该课程的选课记录，请刷新后重试", None
         except Exception as e:
             logger.error(f"加入课程失败: {str(e)}", exc_info=True)
             return False, f"加入课程失败: {str(e)}", None

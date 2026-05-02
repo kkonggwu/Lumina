@@ -92,8 +92,16 @@
                     />
                     <ol v-else class="test-case-list">
                       <li v-for="(tc, ti) in q.test_cases" :key="ti">
-                        <span v-if="tc.input"><strong>输入：</strong>{{ tc.input }}</span>
-                        <span v-if="tc.output" style="margin-left: 16px"><strong>期望：</strong>{{ tc.output }}</span>
+                        <span v-if="q.question_type === 'python' && tc.function_name">
+                          <strong>函数：</strong>{{ tc.function_name }}
+                        </span>
+                        <span v-if="formatCaseInput(q.question_type, tc)" style="margin-left: 16px">
+                          <strong>{{ q.question_type === 'sql' ? '初始化 SQL：' : '输入：' }}</strong>
+                          {{ formatCaseInput(q.question_type, tc) }}
+                        </span>
+                        <span v-if="formatCaseExpected(q.question_type, tc)" style="margin-left: 16px">
+                          <strong>期望：</strong>{{ formatCaseExpected(q.question_type, tc) }}
+                        </span>
                         <span v-if="tc.description" style="margin-left: 16px; color: #999">{{ tc.description }}</span>
                       </li>
                     </ol>
@@ -202,8 +210,16 @@
                 <div class="test-cases-title">测试用例：</div>
                 <ol>
                   <li v-for="(tc, ti) in q.test_cases" :key="ti">
-                    <span v-if="tc.input"><strong>输入：</strong>{{ tc.input }}</span>
-                    <span v-if="tc.output" style="margin-left: 12px"><strong>期望：</strong>{{ tc.output }}</span>
+                    <span v-if="q.question_type === 'python' && tc.function_name">
+                      <strong>函数：</strong>{{ tc.function_name }}
+                    </span>
+                    <span v-if="formatCaseInput(q.question_type, tc)" style="margin-left: 12px">
+                      <strong>{{ q.question_type === 'sql' ? '初始化 SQL：' : '输入：' }}</strong>
+                      {{ formatCaseInput(q.question_type, tc) }}
+                    </span>
+                    <span v-if="formatCaseExpected(q.question_type, tc)" style="margin-left: 12px">
+                      <strong>期望：</strong>{{ formatCaseExpected(q.question_type, tc) }}
+                    </span>
                     <span v-if="tc.description" style="margin-left: 12px; color: #999">{{ tc.description }}</span>
                   </li>
                 </ol>
@@ -294,6 +310,16 @@ const getAnswerRows = (type) => {
   if (isCodeType(type)) return 12
   if (type === 'report') return 16
   return 4
+}
+
+const formatCaseInput = (type, tc) => {
+  if (type === 'sql') return tc.setup_sql || tc.input || ''
+  return tc.input || tc.in || ''
+}
+
+const formatCaseExpected = (type, tc) => {
+  if (type === 'sql') return tc.expected_rows || tc.expected || tc.output || ''
+  return tc.expected || tc.output || tc.out || ''
 }
 
 const assignment = ref(null)

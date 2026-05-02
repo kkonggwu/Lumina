@@ -32,7 +32,11 @@ SECRET_KEY = "django-insecure-r_@uzmsuao&_$qs()7lwfzhniqpj5339okzkhq=!6lvir9fzkj
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 # Application definition
 
@@ -176,10 +180,10 @@ DATABASES = {
     'default': {
 
         'ENGINE': 'django.db.backends.mysql',  # 默认
-        'NAME': 'rag_project',  # 连接的数据库  #一定要存在的数据库名
-        'HOST': '127.0.0.1',  # mysql的ip地址
-        'PORT': 3306,  # mysql的端口
-        'USER': 'root',  # mysql的用户名
+        'NAME': os.getenv('MYSQL_DATABASE', 'rag_project'),  # 连接的数据库
+        'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),  # mysql的ip地址
+        'PORT': int(os.getenv('MYSQL_PORT', '3306')),  # mysql的端口
+        'USER': os.getenv('MYSQL_USER', 'root'),  # mysql的用户名
         'PASSWORD': MYSQL_PASSWD  # mysql的密码
     }
 }

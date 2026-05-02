@@ -1,0 +1,81 @@
+services:
+  backend:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: rag_project
+      MYSQL_USER: root
+      ENABLE_MILVUS: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      milvus:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             gunicorn Lumina.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+  sandbox-worker:
+    build:
+      context: .
+    environment:
+      SANDBOX_WORKER_HOST: 0.0.0.0
+      SANDBOX_WORKER_PORT: 8090
+    ports:
+      - "8090:8090"
+    command: python -m sandbox.worker
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWD}
+      MYSQL_DATABASE: rag_project
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  milvus:
+    image: milvusdb/milvus:v2.4.15
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+
+volumes:
+  mysql_data:
+  milvus_data:

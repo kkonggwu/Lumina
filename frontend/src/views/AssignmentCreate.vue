@@ -156,20 +156,46 @@
                   class="test-case-row"
                 >
                   <span class="test-case-index">用例 {{ ti + 1 }}</span>
-                  <a-input
-                    v-model:value="tc.input"
-                    placeholder="输入"
-                    style="flex: 1; margin-right: 8px"
-                  />
-                  <a-input
-                    v-model:value="tc.output"
-                    :placeholder="q.question_type === 'sql' ? '期望结果集说明' : '期望输出'"
-                    style="flex: 1; margin-right: 8px"
-                  />
+                  <template v-if="q.question_type === 'python'">
+                    <a-input
+                      v-model:value="tc.function_name"
+                      placeholder="函数名，如 bubble_sort"
+                      style="width: 180px; margin-right: 8px"
+                    />
+                    <a-input
+                      v-model:value="tc.input"
+                      placeholder='参数 JSON，如 [[3,1,2]]'
+                      style="flex: 1; margin-right: 8px"
+                    />
+                    <a-input
+                      v-model:value="tc.expected"
+                      placeholder='期望返回 JSON，如 [1,2,3]'
+                      style="flex: 1; margin-right: 8px"
+                    />
+                  </template>
+                  <template v-else>
+                    <a-textarea
+                      v-model:value="tc.setup_sql"
+                      placeholder="建表和插入数据 SQL"
+                      :rows="2"
+                      style="flex: 1.2; margin-right: 8px"
+                    />
+                    <a-textarea
+                      v-model:value="tc.expected_rows"
+                      placeholder='期望结果集 JSON，如 [{"id":1,"name":"A"}]'
+                      :rows="2"
+                      style="flex: 1; margin-right: 8px"
+                    />
+                    <a-select
+                      v-model:value="tc.compare_mode"
+                      :options="COMPARE_MODE_OPTIONS"
+                      style="width: 110px; margin-right: 8px"
+                    />
+                  </template>
                   <a-input
                     v-model:value="tc.description"
                     placeholder="说明（可选）"
-                    style="flex: 1; margin-right: 8px"
+                    style="width: 180px; margin-right: 8px"
                   />
                   <a-button
                     type="link"
@@ -269,6 +295,11 @@ const QUESTION_TYPE_COLOR = {
   report: 'gold',
 }
 
+const COMPARE_MODE_OPTIONS = [
+  { value: 'unordered', label: '忽略顺序' },
+  { value: 'ordered', label: '严格顺序' },
+]
+
 const isCodeType = (t) => t === 'python' || t === 'sql'
 
 const makeQuestion = () => ({
@@ -281,7 +312,24 @@ const makeQuestion = () => ({
   grading_rubric: '',
 })
 
-const makeEmptyTestCase = () => ({ input: '', output: '', description: '' })
+const makeEmptyTestCase = (type = 'python') => {
+  if (type === 'sql') {
+    return {
+      setup_sql: '',
+      expected_rows: '',
+      compare_mode: 'unordered',
+      description: '',
+      timeout_ms: 2000,
+    }
+  }
+  return {
+    function_name: '',
+    input: '',
+    expected: '',
+    description: '',
+    timeout_ms: 2000,
+  }
+}
 
 const form = reactive({
   course_id: route.query.course_id ? Number(route.query.course_id) : undefined,
@@ -333,9 +381,7 @@ const removeQuestion = (index) => {
 // 切换题目类型时同步初始化对应的字段
 const handleTypeChange = (q) => {
   if (isCodeType(q.question_type)) {
-    if (!q.test_cases || q.test_cases.length === 0) {
-      q.test_cases = [makeEmptyTestCase()]
-    }
+    q.test_cases = [makeEmptyTestCase(q.question_type)]
   } else {
     q.test_cases = []
   }
@@ -346,7 +392,7 @@ const handleTypeChange = (q) => {
 
 const addTestCase = (q) => {
   if (!q.test_cases) q.test_cases = []
-  q.test_cases.push(makeEmptyTestCase())
+  q.test_cases.push(makeEmptyTestCase(q.question_type))
 }
 
 const removeTestCase = (q, index) => {
@@ -373,16 +419,19 @@ const getStandardAnswerRows = (type) => {
   return 3
 }
 
-// 校验代码题必须有非空测试用例
+// 校验代码题必须有结构化测试用例
 const validateCodeQuestions = () => {
   for (let i = 0; i < form.questions.length; i++) {
     const q = form.questions[i]
     if (isCodeType(q.question_type)) {
-      const valid = (q.test_cases || []).some(
-        (tc) => (tc.input || tc.output || tc.description || '').toString().trim()
-      )
+      const valid = (q.test_cases || []).some((tc) => {
+        if (q.question_type === 'python') {
+          return tc.function_name?.trim() && tc.input?.toString().trim() && tc.expected?.toString().trim()
+        }
+        return tc.setup_sql?.trim() && tc.expected_rows?.toString().trim()
+      })
       if (!valid) {
-        message.error(`第 ${i + 1} 题（${QUESTION_TYPE_LABEL[q.question_type]}）必须至少填写一个非空测试用例`)
+        message.error(`第 ${i + 1} 题（${QUESTION_TYPE_LABEL[q.question_type]}）必须至少填写一个完整测试用例`)
         return false
       }
     }
@@ -418,12 +467,30 @@ const handleSubmit = async () => {
         }
         if (isCodeType(q.question_type)) {
           item.test_cases = (q.test_cases || [])
-            .filter((tc) => (tc.input || tc.output || tc.description || '').toString().trim())
-            .map((tc) => ({
-              input: tc.input || '',
-              output: tc.output || '',
-              description: tc.description || '',
-            }))
+            .filter((tc) => {
+              if (q.question_type === 'python') {
+                return tc.function_name?.trim() && tc.input?.toString().trim() && tc.expected?.toString().trim()
+              }
+              return tc.setup_sql?.trim() && tc.expected_rows?.toString().trim()
+            })
+            .map((tc) => {
+              if (q.question_type === 'python') {
+                return {
+                  function_name: tc.function_name || '',
+                  input: tc.input || '',
+                  expected: tc.expected || '',
+                  description: tc.description || '',
+                  timeout_ms: tc.timeout_ms || 2000,
+                }
+              }
+              return {
+                setup_sql: tc.setup_sql || '',
+                expected_rows: tc.expected_rows || '',
+                compare_mode: tc.compare_mode || 'unordered',
+                description: tc.description || '',
+                timeout_ms: tc.timeout_ms || 2000,
+              }
+            })
         }
         if (q.question_type === 'report' && q.grading_rubric) {
           item.grading_rubric = q.grading_rubric

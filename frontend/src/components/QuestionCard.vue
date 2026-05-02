@@ -78,6 +78,16 @@
       <!-- 代码题评分明细：correctness / logic / style 或 efficiency -->
       <div class="section" v-if="isCodeType && codeBreakdown">
         <div class="section-label">{{ codeType === 'sql' ? 'SQL 评分明细' : 'Python 评分明细' }}</div>
+        <a-alert
+          v-if="hybridSummary"
+          type="info"
+          show-icon
+          class="hybrid-summary"
+        >
+          <template #message>
+            测试分 {{ hybridSummary.testScore }}，LLM 复核分 {{ hybridSummary.llmScore }}，最终分 {{ hybridSummary.finalScore }}
+          </template>
+        </a-alert>
         <div class="dimension-list">
           <div
             v-for="dim in codeDimensions"
@@ -107,15 +117,18 @@
           <a-list size="small" :data-source="testCaseResults">
             <template #renderItem="{ item: tc, index: ti }">
               <a-list-item>
-                <a-tag :color="tc.pass === false ? 'red' : 'green'">
-                  {{ tc.pass === false ? '不通过' : '通过' }}
+                <a-tag :color="isCasePassed(tc) ? 'green' : 'red'">
+                  {{ isCasePassed(tc) ? '通过' : '不通过' }}
                 </a-tag>
                 <span style="margin-left: 8px">
                   <strong>用例 {{ ti + 1 }}</strong>
                   <span v-if="tc.case" style="color: #999; margin-left: 6px">{{ tc.case }}</span>
                 </span>
-                <div v-if="tc.analysis" style="margin-top: 4px; color: #555">
-                  {{ tc.analysis }}
+                <div class="test-result-detail">
+                  <span v-if="tc.expected !== undefined"><strong>期望：</strong>{{ formatValue(tc.expected) }}</span>
+                  <span v-if="tc.actual !== undefined" style="margin-left: 8px"><strong>实际：</strong>{{ formatValue(tc.actual) }}</span>
+                  <span v-if="tc.error" style="margin-left: 8px; color: #f5222d"><strong>错误：</strong>{{ tc.error }}</span>
+                  <span v-if="tc.analysis" style="margin-left: 8px">{{ tc.analysis }}</span>
                 </div>
               </a-list-item>
             </template>
@@ -272,7 +285,17 @@ const reportDimensions = computed(() => {
 const testCaseResults = computed(() => {
   const bd = codeBreakdown.value
   if (!bd) return []
-  return bd.correctness?.test_case_results || []
+  return props.report?.scoring_details?.test_execution?.case_results || bd.correctness?.test_case_results || []
+})
+
+const hybridSummary = computed(() => {
+  const bd = codeBreakdown.value
+  if (!bd || bd.test_score === undefined) return null
+  return {
+    testScore: bd.test_score,
+    llmScore: bd.llm_score,
+    finalScore: bd.final_score,
+  }
 })
 
 const contentKeypoints = computed(() => {
@@ -309,6 +332,13 @@ const getProgressColor = (ratio) => {
   if (r >= 0.7) return '#1890ff'
   if (r >= 0.5) return '#faad14'
   return '#f5222d'
+}
+
+const isCasePassed = (tc) => tc.passed === true || tc.pass === true
+
+const formatValue = (value) => {
+  if (typeof value === 'string') return value
+  return JSON.stringify(value)
 }
 
 const formatKeypoint = (kp) => {
@@ -405,6 +435,9 @@ const formatKeypoint = (kp) => {
   flex-direction: column;
   gap: 12px;
 }
+.hybrid-summary {
+  margin-bottom: 12px;
+}
 .dimension-row {
   padding: 10px 12px;
   background: #fafafa;
@@ -445,6 +478,12 @@ const formatKeypoint = (kp) => {
   background: #fff;
   border: 1px dashed #d9d9d9;
   border-radius: 6px;
+}
+.test-result-detail {
+  margin-top: 4px;
+  color: #555;
+  line-height: 1.6;
+  word-break: break-word;
 }
 .report-keypoints {
   margin-top: 12px;

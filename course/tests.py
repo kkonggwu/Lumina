@@ -13,8 +13,9 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from user.models import UserModel
-from course.models import Course, Document
+from course.models import Course, Document, Enrollment
 from course.services.document_service import DocumentService
+from course.services.course_service import EnrollmentService
 
 
 class DocumentServiceTestCase(TestCase):
@@ -101,6 +102,32 @@ class DocumentServiceTestCase(TestCase):
         has_permission, message = DocumentService.check_delete_permission(self.student.id)
         self.assertFalse(has_permission)
         self.assertIn("只有管理员和教师", message)
+
+    def test_rejoin_course_reactivates_deleted_enrollment(self):
+        """测试学生退出课程后再次加入会复用并激活历史选课记录"""
+        enrollment = Enrollment.objects.create(
+            course=self.course,
+            student=self.student,
+            enrollment_status=2,
+            is_deleted=True,
+        )
+
+        success, message, rejoined = EnrollmentService.join_course_by_invite_code(
+            student_id=self.student.id,
+            invite_code=self.course.invite_code,
+        )
+
+        self.assertTrue(success)
+        self.assertIn("成功", message)
+        self.assertEqual(rejoined.id, enrollment.id)
+
+        enrollment.refresh_from_db()
+        self.assertEqual(enrollment.enrollment_status, 1)
+        self.assertFalse(enrollment.is_deleted)
+        self.assertEqual(
+            Enrollment.objects.filter(course=self.course, student=self.student).count(),
+            1,
+        )
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

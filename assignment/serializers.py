@@ -7,6 +7,88 @@ from rest_framework import serializers
 from course.models import Assignment, Submission, Grade
 
 
+ALLOWED_QUESTION_TYPES = {"essay", "short_answer", "python", "sql", "report"}
+
+
+def validate_question_payload(value):
+    """Validate assignment question JSON, especially executable code tests."""
+    if not value:
+        raise serializers.ValidationError("题目列表不能为空")
+
+    for i, q in enumerate(value):
+        if 'id' not in q:
+            raise serializers.ValidationError(f"第 {i+1} 题缺少 id 字段")
+        if 'content' not in q:
+            raise serializers.ValidationError(f"第 {i+1} 题缺少 content 字段")
+        if 'score' not in q:
+            raise serializers.ValidationError(f"第 {i+1} 题缺少 score 字段")
+        if 'standard_answer' not in q:
+            raise serializers.ValidationError(f"第 {i+1} 题缺少 standard_answer 字段")
+
+        question_type = q.get("question_type", "essay")
+        if question_type not in ALLOWED_QUESTION_TYPES:
+            raise serializers.ValidationError(
+                f"第 {i+1} 题 question_type 非法: {question_type}，"
+                f"仅支持 {', '.join(sorted(ALLOWED_QUESTION_TYPES))}"
+            )
+
+        if question_type == "python":
+            _validate_python_cases(i, q.get("test_cases"))
+        elif question_type == "sql":
+            _validate_sql_cases(i, q.get("test_cases"))
+        elif question_type == "report":
+            rubric = q.get("grading_rubric")
+            if rubric is not None and not isinstance(rubric, (str, dict)):
+                raise serializers.ValidationError(
+                    f"第 {i+1} 题 grading_rubric 格式非法，须为字符串或对象"
+                )
+    return value
+
+
+def _validate_python_cases(question_index, test_cases):
+    if not isinstance(test_cases, list) or not test_cases:
+        raise serializers.ValidationError(
+            f"第 {question_index + 1} 题为 python 类型，必须提供非空 test_cases 列表"
+        )
+    for case_index, case in enumerate(test_cases):
+        if not isinstance(case, dict):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例必须为对象"
+            )
+        if not case.get("function_name"):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 function_name"
+            )
+        if "input" not in case:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 input"
+            )
+        if "expected" not in case and "output" not in case:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 expected"
+            )
+
+
+def _validate_sql_cases(question_index, test_cases):
+    if not isinstance(test_cases, list) or not test_cases:
+        raise serializers.ValidationError(
+            f"第 {question_index + 1} 题为 sql 类型，必须提供非空 test_cases 列表"
+        )
+    for case_index, case in enumerate(test_cases):
+        if not isinstance(case, dict):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例必须为对象"
+            )
+        if not case.get("setup_sql") and not case.get("input"):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 setup_sql"
+            )
+        if "expected_rows" not in case and "expected" not in case and "output" not in case:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 expected_rows"
+            )
+
+
 # ==================== 作业 CRUD ====================
 
 class AssignmentCreateSerializer(serializers.Serializer):
@@ -22,42 +104,7 @@ class AssignmentCreateSerializer(serializers.Serializer):
     end_time = serializers.DateTimeField(required=True, help_text='截止时间')
 
     def validate_questions(self, value):
-        allowed_types = {"essay", "short_answer", "python", "sql", "report"}
-        if not value:
-            raise serializers.ValidationError("题目列表不能为空")
-        for i, q in enumerate(value):
-            if 'id' not in q:
-                raise serializers.ValidationError(f"第 {i+1} 题缺少 id 字段")
-            if 'content' not in q:
-                raise serializers.ValidationError(f"第 {i+1} 题缺少 content 字段")
-            if 'score' not in q:
-                raise serializers.ValidationError(f"第 {i+1} 题缺少 score 字段")
-            if 'standard_answer' not in q:
-                raise serializers.ValidationError(f"第 {i+1} 题缺少 standard_answer 字段")
-
-            question_type = q.get("question_type", "essay")
-            if question_type not in allowed_types:
-                raise serializers.ValidationError(
-                    f"第 {i+1} 题 question_type 非法: {question_type}，"
-                    f"仅支持 {', '.join(sorted(allowed_types))}"
-                )
-
-            # 编程题必须至少提供一个测试用例，便于自动判题
-            if question_type in {"python", "sql"}:
-                test_cases = q.get("test_cases")
-                if not isinstance(test_cases, list) or not test_cases:
-                    raise serializers.ValidationError(
-                        f"第 {i+1} 题为 {question_type} 类型，必须提供非空 test_cases 列表"
-                    )
-
-            # 课程报告题：test_cases 非必须，但若提供 grading_rubric 须为字符串或字典
-            if question_type == "report":
-                rubric = q.get("grading_rubric")
-                if rubric is not None and not isinstance(rubric, (str, dict)):
-                    raise serializers.ValidationError(
-                        f"第 {i+1} 题 grading_rubric 格式非法，须为字符串或对象"
-                    )
-        return value
+        return validate_question_payload(value)
 
     def validate(self, data):
         if data['start_time'] >= data['end_time']:
@@ -75,6 +122,9 @@ class AssignmentUpdateSerializer(serializers.Serializer):
     total_score = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, help_text='作业总分')
     start_time = serializers.DateTimeField(required=False, help_text='开始时间')
     end_time = serializers.DateTimeField(required=False, help_text='截止时间')
+
+    def validate_questions(self, value):
+        return validate_question_payload(value)
 
 
 class AssignmentDetailSerializer(serializers.ModelSerializer):
