@@ -90,16 +90,17 @@ const handleLogout = () => {
 
 .sidebar {
   width: 248px;
-  background: #001529;
-  color: rgba(255, 255, 255, 0.88);
+  background: linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 100%);
+  color: #334155;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 12px rgba(0, 21, 41, 0.18);
+  border-right: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 2px 0 14px rgba(148, 163, 184, 0.12);
 }
 
 .sidebar-header {
   padding: 28px 22px 22px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 .sidebar-header h2 {
@@ -107,7 +108,7 @@ const handleLogout = () => {
   margin-bottom: 14px;
   font-weight: 700;
   letter-spacing: 0.2px;
-  color: #ffffff;
+  color: #1e293b;
 }
 
 .user-info {
@@ -124,8 +125,8 @@ const handleLogout = () => {
 
 .user-type {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.82);
-  background: rgba(255, 255, 255, 0.12);
+  color: #475569;
+  background: rgba(255, 255, 255, 0.72);
   padding: 4px 8px;
   border-radius: 12px;
   display: inline-block;
@@ -142,7 +143,7 @@ const handleLogout = () => {
   align-items: center;
   gap: 12px;
   padding: 15px 20px;
-  color: rgba(255, 255, 255, 0.78);
+  color: #475569;
   text-decoration: none;
   transition: background-color 0.2s, color 0.2s;
   margin: 4px 12px;
@@ -150,14 +151,15 @@ const handleLogout = () => {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.68);
+  color: #2563eb;
 }
 
 .nav-item.active {
-  background: #1677ff;
-  color: #ffffff;
+  background: #bae6fd;
+  color: #075985;
   font-weight: 600;
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.18);
 }
 
 .nav-icon {
@@ -167,8 +169,8 @@ const handleLogout = () => {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.75);
+  color: #475569;
   font-size: 13px;
   font-weight: 600;
 }
@@ -179,7 +181,7 @@ const handleLogout = () => {
 
 .sidebar-footer {
   padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 .logout-btn {
@@ -188,8 +190,8 @@ const handleLogout = () => {
   gap: 12px;
   width: 100%;
   padding: 15px 20px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.62);
+  color: #475569;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -198,8 +200,8 @@ const handleLogout = () => {
 }
 
 .logout-btn:hover {
-  background: rgba(255, 77, 79, 0.16);
-  color: #ffccc7;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .main-content {
