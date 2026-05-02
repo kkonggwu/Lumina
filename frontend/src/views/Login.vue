@@ -5,111 +5,73 @@
         <h1>Lumina</h1>
         <p>高校课程与作业管理系统</p>
       </div>
-      
-      <div class="tabs">
-        <button 
-          :class="['tab', { active: activeTab === 'login' }]"
-          @click="activeTab = 'login'"
-        >
-          登录
-        </button>
-        <button 
-          :class="['tab', { active: activeTab === 'register' }]"
-          @click="activeTab = 'register'"
-        >
-          注册
-        </button>
-      </div>
+
+      <a-segmented :value="activeTab" :options="tabOptions" block class="auth-tabs"
+        @update:value="activeTab = $event" />
 
       <!-- 登录表单 -->
-      <form v-if="activeTab === 'login'" @submit.prevent="handleLogin" class="form">
-        <div class="form-group">
-          <label>用户名</label>
-          <input 
-            v-model="loginForm.username" 
-            type="text" 
-            placeholder="请输入用户名"
-            required
-          />
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input 
-            v-model="loginForm.password" 
-            type="password" 
-            placeholder="请输入密码"
-            required
-          />
-        </div>
-        <button type="submit" :disabled="loading" class="submit-btn">
-          {{ loading ? '登录中...' : '登录' }}
-        </button>
+      <a-form v-if="activeTab === 'login'" :model="loginForm" :rules="loginRules" layout="vertical" class="auth-form"
+        @finish="handleLogin">
+        <a-form-item label="用户名" name="username">
+          <a-input :value="loginForm.username" @update:value="loginForm.username = $event" placeholder="请输入用户名"
+            size="large" allow-clear />
+        </a-form-item>
+
+        <a-form-item label="密码" name="password">
+          <a-input-password :value="loginForm.password" @update:value="loginForm.password = $event" placeholder="请输入密码"
+            size="large" autocomplete="current-password" />
+        </a-form-item>
+
+        <a-button type="primary" html-type="submit" :loading="loading" block size="large" class="auth-submit">
+          登录
+        </a-button>
         <div v-if="error" class="error-message">{{ error }}</div>
-      </form>
+      </a-form>
 
       <!-- 注册表单 -->
-      <form v-else @submit.prevent="handleRegister" class="form">
-        <div class="form-group">
-          <label>用户名</label>
-          <input 
-            v-model="registerForm.username" 
-            type="text" 
-            placeholder="请输入用户名（2-50个字符）"
-            required
-            minlength="2"
-            maxlength="50"
-          />
-        </div>
-        <div class="form-group">
-          <label>昵称</label>
-          <input 
-            v-model="registerForm.nickname" 
-            type="text" 
-            placeholder="请输入昵称"
-            required
-            maxlength="50"
-          />
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input 
-            v-model="registerForm.password" 
-            type="password" 
-            placeholder="请输入密码（至少6个字符）"
-            required
-            minlength="6"
-          />
-        </div>
-        <div class="form-group">
-          <label>用户类型</label>
-          <select v-model="registerForm.user_type">
-            <option :value="2">学生</option>
-            <option :value="1">教师</option>
-            <option :value="0">管理员</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>邮箱（可选）</label>
-          <input 
-            v-model="registerForm.email" 
-            type="email" 
-            placeholder="请输入邮箱"
-          />
-        </div>
-        <div class="form-group">
-          <label>手机号（可选）</label>
-          <input 
-            v-model="registerForm.phone" 
-            type="tel" 
-            placeholder="请输入手机号"
-            maxlength="20"
-          />
-        </div>
-        <button type="submit" :disabled="loading" class="submit-btn">
-          {{ loading ? '注册中...' : '注册' }}
-        </button>
+      <a-form v-else ref="registerFormRef" :model="registerForm" :rules="registerRules" layout="vertical"
+        class="auth-form" @finish="handleRegister">
+        <a-form-item label="用户名" name="username" has-feedback>
+          <a-input :value="registerForm.username" @update:value="registerForm.username = $event"
+            placeholder="请输入用户名（2-50个字符）" :maxlength="50" size="large" allow-clear />
+        </a-form-item>
+
+        <a-form-item label="昵称" name="nickname" has-feedback>
+          <a-input :value="registerForm.nickname" @update:value="registerForm.nickname = $event" placeholder="请输入昵称"
+            :maxlength="50" size="large" allow-clear />
+        </a-form-item>
+
+        <a-form-item label="密码" name="password" has-feedback>
+          <a-input-password :value="registerForm.password" @update:value="registerForm.password = $event"
+            placeholder="请输入密码（至少6个字符）" size="large" autocomplete="new-password" />
+        </a-form-item>
+
+        <a-form-item label="确认密码" name="confirm_password" has-feedback>
+          <a-input-password :value="registerForm.confirm_password"
+            @update:value="registerForm.confirm_password = $event" placeholder="请再次输入密码" size="large"
+            autocomplete="new-password" />
+        </a-form-item>
+
+        <a-form-item label="用户类型" name="user_type">
+          <a-select :value="registerForm.user_type" @update:value="registerForm.user_type = $event"
+            placeholder="请选择用户类型" size="large" :options="userTypeOptions" />
+        </a-form-item>
+
+        <a-form-item label="邮箱" name="email">
+          <a-input :value="registerForm.email" @update:value="registerForm.email = $event" placeholder="请输入邮箱"
+            size="large" allow-clear />
+        </a-form-item>
+
+        <a-form-item label="手机号" name="phone">
+          <a-input :value="registerForm.phone" @update:value="registerForm.phone = $event" placeholder="请输入手机号"
+            :maxlength="20" size="large" allow-clear />
+        </a-form-item>
+
+        <a-button type="primary" html-type="submit" :loading="loading" block size="large" class="auth-submit">
+          注册
+        </a-button>
         <div v-if="error" class="error-message">{{ error }}</div>
-      </form>
+      </a-form>
     </div>
   </div>
 </template>
@@ -125,6 +87,12 @@ const authStore = useAuthStore()
 const activeTab = ref('login')
 const loading = ref(false)
 const error = ref('')
+const registerFormRef = ref()
+
+const tabOptions = [
+  { value: 'login', label: '登录' },
+  { value: 'register', label: '注册' }
+]
 
 const loginForm = ref({
   username: '',
@@ -135,15 +103,67 @@ const registerForm = ref({
   username: '',
   nickname: '',
   password: '',
+  confirm_password: '',
   user_type: 2,
   email: '',
   phone: ''
 })
 
+const userTypeOptions = [
+  { value: 2, label: '学生' },
+  { value: 1, label: '教师' }
+]
+
+const loginRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' }
+  ]
+}
+
+const validateConfirmPassword = async (_rule, value) => {
+  if (!value) {
+    return Promise.reject(new Error('请再次输入密码'))
+  }
+  if (value !== registerForm.value.password) {
+    return Promise.reject(new Error('两次输入的密码不一致'))
+  }
+  return Promise.resolve()
+}
+
+const registerRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 2, max: 50, message: '用户名长度需为 2-50 个字符', trigger: 'blur' }
+  ],
+  nickname: [
+    { required: true, message: '请输入昵称', trigger: 'blur' },
+    { max: 50, message: '昵称不能超过 50 个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码至少 6 个字符', trigger: 'blur' }
+  ],
+  confirm_password: [
+    { required: true, validator: validateConfirmPassword, trigger: ['blur', 'change'] }
+  ],
+  user_type: [
+    { required: true, message: '请选择用户类型', trigger: 'change' }
+  ],
+  email: [
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+  ],
+  phone: [
+    { max: 20, message: '手机号不能超过 20 个字符', trigger: 'blur' }
+  ]
+}
+
 const handleLogin = async () => {
   loading.value = true
   error.value = ''
-  
+
   try {
     const result = await authStore.login(loginForm.value)
     if (result.success) {
@@ -161,9 +181,11 @@ const handleLogin = async () => {
 const handleRegister = async () => {
   loading.value = true
   error.value = ''
-  
+
   try {
-    const result = await authStore.register(registerForm.value)
+    const payload = { ...registerForm.value }
+    delete payload.confirm_password
+    const result = await authStore.register(payload)
     if (result.success) {
       router.push('/')
     } else {
@@ -205,6 +227,7 @@ const handleRegister = async () => {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -228,95 +251,42 @@ const handleRegister = async () => {
   font-size: 14px;
 }
 
-.tabs {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 30px;
-  border-bottom: 2px solid #f0f0f0;
+.auth-tabs {
+  margin-bottom: 28px;
+  padding: 4px;
+  background: #f3f6fb;
+  border-radius: 10px;
 }
 
-.tab {
-  flex: 1;
-  padding: 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  color: #666;
-  transition: all 0.3s;
-  position: relative;
+.auth-tabs :deep(.ant-segmented-item) {
+  border-radius: 8px;
 }
 
-.tab.active {
-  color: #2563eb;
-  font-weight: 600;
+.auth-tabs :deep(.ant-segmented-item-label) {
+  min-height: 38px;
+  line-height: 38px;
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #2563eb;
+.auth-form {
+  margin-top: 2px;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.auth-form :deep(.ant-form-item) {
+  margin-bottom: 18px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-group label {
-  font-size: 14px;
+.auth-form :deep(.ant-form-item-label > label) {
   color: #333;
   font-weight: 500;
 }
 
-.form-group input,
-.form-group select {
-  padding: 12px;
-  border: 2px solid #e0e0e0;
+.auth-submit {
+  margin-top: 4px;
+  height: 46px;
   border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-group input:focus,
-.form-group select:focus {
-  outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.submit-btn {
-  padding: 14px;
-  background: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
   font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s, box-shadow 0.2s;
-  margin-top: 10px;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #1d4ed8;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
-}
-
-.submit-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .error-message {
@@ -329,4 +299,3 @@ const handleRegister = async () => {
   border-radius: 8px;
 }
 </style>
-
