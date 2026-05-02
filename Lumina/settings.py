@@ -233,6 +233,9 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Logging配置
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -268,7 +271,7 @@ LOGGING = {
         'file_debug': {
             'level': 'DEBUG',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'debug.log'),
+            'filename': LOG_DIR / 'debug.log',
             'maxBytes': 1024 * 1024 * 5,  # 5MB
             'backupCount': 5,
             'formatter': 'verbose',
@@ -276,7 +279,7 @@ LOGGING = {
         'file_info': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'info.log'),
+            'filename': LOG_DIR / 'info.log',
             'maxBytes': 1024 * 1024 * 10,  # 10MB
             'backupCount': 10,
             'formatter': 'simple',
@@ -284,7 +287,7 @@ LOGGING = {
         'file_error': {
             'level': 'ERROR',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'error.log'),
+            'filename': LOG_DIR / 'error.log',
             'maxBytes': 1024 * 1024 * 10,  # 10MB
             'backupCount': 10,
             'formatter': 'verbose',
