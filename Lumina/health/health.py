@@ -105,8 +105,8 @@ def health_check(request: HttpRequest):
         overall_status = "error"
     
     # 系统信息
-    import psutil
     try:
+        import psutil
         memory = psutil.virtual_memory()
         health_status["system"] = {
             "memory_usage_percent": memory.percent,

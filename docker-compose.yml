@@ -18,8 +18,11 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
+    volumes:
+      - backend_logs:/app/logs
     command: >
-      sh -c "python manage.py collectstatic --noinput &&
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
              gunicorn Lumina.wsgi:application --bind 0.0.0.0:8000 --workers 3"
 
   frontend:
@@ -52,8 +55,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWD}
       MYSQL_DATABASE: rag_project
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -70,12 +71,10 @@ services:
       ETCD_USE_EMBED: "true"
       ETCD_DATA_DIR: /var/lib/milvus/etcd
       COMMON_STORAGETYPE: local
-    ports:
-      - "19530:19530"
-      - "9091:9091"
     volumes:
       - milvus_data:/var/lib/milvus
 
 volumes:
   mysql_data:
   milvus_data:
+  backend_logs:

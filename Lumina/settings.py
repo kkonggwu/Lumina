@@ -26,11 +26,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.Lumina.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-r_@uzmsuao&_$qs()7lwfzhniqpj5339okzkhq=!6lvir9fzkj"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-r_@uzmsuao&_$qs()7lwfzhniqpj5339okzkhq=!6lvir9fzkj")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = [
     host.strip()

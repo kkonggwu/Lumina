@@ -6,6 +6,7 @@ import ast
 import json
 import sqlite3
 import time
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List
 
 from sandbox.models import SandboxResult, TestCaseResult
@@ -121,14 +122,54 @@ def _row_to_plain(row: sqlite3.Row) -> Dict[str, Any]:
     return {key: row[key] for key in row.keys()}
 
 
+def _normalize_value(v: Any) -> Any:
+    """
+    把数值型字段统一规范化，使得以下写法在比较时完全等价：
+      11000 == 11000.0 == "11000" == "11000.00" == "11,000.00"
+    具体规则：
+      - int / float          → Decimal（归一化消除尾零）
+      - 看起来像数字的字符串  → Decimal（归一化消除尾零）
+      - None / bool / 其他   → 原值不变
+    """
+    if isinstance(v, bool):       # bool 是 int 的子类，需先排除
+        return v
+    if isinstance(v, (int, float)):
+        return Decimal(str(v)).normalize()
+    if isinstance(v, str):
+        cleaned = v.strip().replace(",", "")   # 容忍千分位逗号，如 "1,000.00"
+        try:
+            return Decimal(cleaned).normalize()
+        except InvalidOperation:
+            pass
+    return v
+
+
+def _normalize_row(row: Any) -> Any:
+    """对行中每个字段应用 _normalize_value。"""
+    if isinstance(row, dict):
+        return {k: _normalize_value(val) for k, val in row.items()}
+    return row
+
+
 def _compare_rows(actual: List[Any], expected: List[Any], compare_mode: str) -> bool:
     if compare_mode == "ordered":
-        return actual == expected
-    return _canonical_rows(actual) == _canonical_rows(expected)
+        # 保持顺序，但每行字段值做数值规范化
+        return _serialize_rows(actual) == _serialize_rows(expected)
+    # unordered（默认）：规范化后排序，与结果顺序无关
+    return sorted(_serialize_rows(actual)) == sorted(_serialize_rows(expected))
+
+
+def _serialize_rows(rows: List[Any]) -> List[str]:
+    """将每行规范化后序列化为 JSON 字符串列表（保持原始顺序）。"""
+    return [
+        json.dumps(_normalize_row(row), ensure_ascii=False, sort_keys=True, default=str)
+        for row in rows
+    ]
 
 
 def _canonical_rows(rows: List[Any]) -> List[str]:
-    return sorted(json.dumps(row, ensure_ascii=False, sort_keys=True, default=str) for row in rows)
+    """兼容旧调用：规范化后排序（unordered 用）。"""
+    return sorted(_serialize_rows(rows))
 
 
 def _truncate(value: Any) -> str:
