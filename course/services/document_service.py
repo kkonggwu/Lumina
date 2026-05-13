@@ -173,84 +173,188 @@ class DocumentService:
             logger.error(f"上传文档失败: {str(e)}", exc_info=True)
             return False, f"上传文档失败: {str(e)}", None
     
+    # ---------- 切割策略常量 ----------
+    _MD_HEADERS = [("#", "h1"), ("##", "h2"), ("###", "h3"), ("####", "h4")]
+    _PLAIN_CHUNK_SIZE = 800
+    _PLAIN_CHUNK_OVERLAP = 150
+    _PLAIN_SEPARATORS = ["\n\n", "\n", "。", "；", "！", "？", ".", " ", ""]
+
     def _process_and_index_document(self, document: Document, file_path: Path):
         """
-        处理文档内容并索引到Milvus
-        
-        Args:
-            document: 文档对象
-            file_path: 文件路径
+        处理文档内容并索引到 Milvus。
+
+        切割策略按文件类型分流：
+          - .md / .markdown  → MarkdownHeaderTextSplitter（按 # 标题语义切割）
+          - .docx            → 提取时已将 Heading 样式转为 # 前缀 → 同 md 策略
+          - .pdf             → RecursiveCharacterTextSplitter，chunk 元数据携带页码范围
+          - .txt / 其他      → RecursiveCharacterTextSplitter
         """
         try:
-            # 1. 读取文件内容
             with open(file_path, 'rb') as f:
                 file_content = f.read()
-            
-            # 2. 使用file_loader提取文本内容
+
             text_content, file_metadata = sniff_and_load(document.file_name, file_content)
-            
+
             if not text_content or not text_content.strip():
                 raise ValueError("文档内容为空，无法处理")
-            
-            # 3. 使用LangChain进行文档分块
+
             from langchain_core.documents import Document as LangChainDocument
-            from langchain_text_splitters import MarkdownHeaderTextSplitter
-            
-            # 创建临时文档对象
-            langchain_doc = LangChainDocument(
-                page_content=text_content,
-                metadata={
-                    "source": str(file_path),
-                    "document_id": document.id,
-                    "course_id": document.course_id,
-                    "uploader_id": document.uploader_id,
-                    "file_name": document.file_name,
-                    "file_type": document.file_type,
-                    "uploaded_at": document.uploaded_at.isoformat() if document.uploaded_at else None,
-                    **file_metadata
-                }
+            from langchain_text_splitters import (
+                MarkdownHeaderTextSplitter,
+                RecursiveCharacterTextSplitter,
             )
-            
-            # 使用Markdown分割器进行分块
-            headers_to_split_on = [
-                ("#", "h1"),
-                ("##", "h2"),
-                ("###", "h3"),
-                ("####", "h4")
-            ]
-            
-            markdown_splitter = MarkdownHeaderTextSplitter(
-                headers_to_split_on=headers_to_split_on,
-                strip_headers=False,
-                return_each_line=False
+
+            base_meta = {
+                "source": str(file_path),
+                "document_id": document.id,
+                "course_id": document.course_id,
+                "uploader_id": document.uploader_id,
+                "file_name": document.file_name,
+                "file_type": document.file_type,
+                "uploaded_at": document.uploaded_at.isoformat() if document.uploaded_at else None,
+                **{k: v for k, v in file_metadata.items() if k != "page_map"},
+            }
+
+            file_type = file_metadata.get("type", "txt")
+            chunks = self._split_by_type(
+                text_content, file_type, file_metadata, base_meta,
+                LangChainDocument, MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter,
             )
-            
-            try:
-                # 尝试Markdown分割
-                chunks = markdown_splitter.split_text(text_content)
-                # 为每个chunk添加元数据
-                for chunk in chunks:
-                    chunk.metadata.update(langchain_doc.metadata)
-            except Exception as e:
-                logger.warning(f"Markdown分割失败，将整个文档作为一个块: {str(e)}")
-                # 如果分割失败，将整个文档作为一个块
-                chunks = [langchain_doc]
-            
-            # 4. 使用LangChainMilvusManager的add_documents方法插入到Milvus
-            # add_documents方法接受Document对象列表，会自动处理向量化
-            milvus_ids = self.milvus_manager.add_documents(chunks)
-            
-            # 6. 更新文档状态为处理成功
-            # DOCUMENT_STATUS_CHOICES: (0, '上传中'), (1, '处理成功'), (2, '处理失败')
-            document.document_status = 1  # 处理成功
-            document.processing_log = f"成功处理，生成 {len(chunks)} 个文档块，已索引到Milvus"
+
+            self.milvus_manager.add_documents(chunks)
+
+            document.document_status = 1
+            document.processing_log = (
+                f"成功处理（{file_type}），生成 {len(chunks)} 个文档块，切割方式: "
+                f"{'标题语义' if file_type in ('md', 'docx') else '字符窗口'}，已索引到 Milvus"
+            )
             document.save()
-            
-            logger.info(f"文档 {document.id} 处理成功，生成了 {len(chunks)} 个块")
-            
+            logger.info(f"文档 {document.id} 处理成功，类型={file_type}，生成 {len(chunks)} 个块")
+
         except Exception as e:
             logger.error(f"处理文档 {document.id} 时出错: {str(e)}", exc_info=True)
             raise
+
+    def _split_by_type(
+        self,
+        text_content: str,
+        file_type: str,
+        file_metadata: dict,
+        base_meta: dict,
+        LangChainDocument,
+        MarkdownHeaderTextSplitter,
+        RecursiveCharacterTextSplitter,
+    ):
+        """
+        根据文件类型选择切割策略，返回 LangChainDocument 列表。
+
+        - md / docx：MarkdownHeaderTextSplitter 标题语义切割
+        - pdf：RecursiveCharacterTextSplitter + 页码元数据注入
+        - txt / 其他：RecursiveCharacterTextSplitter
+        """
+        if file_type in ("md", "docx"):
+            return self._split_markdown_style(
+                text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter
+            )
+        elif file_type == "pdf":
+            return self._split_pdf_style(
+                text_content, file_metadata, base_meta,
+                LangChainDocument, RecursiveCharacterTextSplitter
+            )
+        else:
+            return self._split_plain_text(
+                text_content, base_meta, LangChainDocument, RecursiveCharacterTextSplitter
+            )
+
+    def _split_markdown_style(
+        self, text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter
+    ):
+        """Markdown / Word（已转 # 前缀）→ 标题语义切割。"""
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=self._MD_HEADERS,
+            strip_headers=False,
+            return_each_line=False,
+        )
+        try:
+            chunks = splitter.split_text(text_content)
+            for chunk in chunks:
+                chunk.metadata.update(base_meta)
+                chunk.metadata["split_method"] = "markdown_header"
+            # 若整篇没有任何 # 标题，split_text 会返回 1 个大块；
+            # 此时降级到通用切割，避免整篇一块影响检索
+            if len(chunks) == 1 and len(chunks[0].page_content) > self._PLAIN_CHUNK_SIZE * 2:
+                logger.info("文档无 Markdown 标题结构，降级为字符窗口切割")
+                return self._split_plain_text(
+                    text_content, base_meta, LangChainDocument,
+                    __import__("langchain_text_splitters").RecursiveCharacterTextSplitter
+                )
+            return chunks
+        except Exception as e:
+            logger.warning(f"Markdown 标题切割失败，降级为整篇一块: {e}")
+            doc = LangChainDocument(page_content=text_content, metadata={**base_meta, "split_method": "fallback"})
+            return [doc]
+
+    def _split_pdf_style(
+        self, text_content, file_metadata, base_meta,
+        LangChainDocument, RecursiveCharacterTextSplitter
+    ):
+        """
+        PDF → RecursiveCharacterTextSplitter，并为每个 chunk 注入页码范围。
+
+        page_map 由 file_loader.load_pdf() 生成，格式：
+            [{page_num, char_start, char_end}, ...]
+        """
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self._PLAIN_CHUNK_SIZE,
+            chunk_overlap=self._PLAIN_CHUNK_OVERLAP,
+            separators=self._PLAIN_SEPARATORS,
+        )
+        raw_chunks = splitter.create_documents([text_content], metadatas=[base_meta])
+
+        page_map = file_metadata.get("page_map", [])
+
+        # 遍历 raw_chunks，根据 chunk 文本在全文中的偏移量推算页码
+        full_text = text_content
+        cursor = 0
+        for chunk in raw_chunks:
+            # 在全文中定位该 chunk 的起始偏移（从上次游标处向后搜索）
+            idx = full_text.find(chunk.page_content[:50], cursor)
+            if idx == -1:
+                idx = cursor
+            chunk_start = idx
+            chunk_end = idx + len(chunk.page_content)
+
+            pages_covered = self._pages_for_range(page_map, chunk_start, chunk_end)
+            chunk.metadata["split_method"] = "recursive_char"
+            chunk.metadata["page_start"] = pages_covered[0] if pages_covered else None
+            chunk.metadata["page_end"] = pages_covered[-1] if pages_covered else None
+
+            cursor = max(cursor, idx)
+
+        return raw_chunks
+
+    def _split_plain_text(
+        self, text_content, base_meta, LangChainDocument, RecursiveCharacterTextSplitter
+    ):
+        """TXT / 其他格式 → RecursiveCharacterTextSplitter 通用切割。"""
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self._PLAIN_CHUNK_SIZE,
+            chunk_overlap=self._PLAIN_CHUNK_OVERLAP,
+            separators=self._PLAIN_SEPARATORS,
+        )
+        chunks = splitter.create_documents([text_content], metadatas=[base_meta])
+        for chunk in chunks:
+            chunk.metadata["split_method"] = "recursive_char"
+        return chunks
+
+    @staticmethod
+    def _pages_for_range(page_map: list, char_start: int, char_end: int) -> list:
+        """返回 [char_start, char_end) 范围内覆盖的页码列表。"""
+        pages = []
+        for entry in page_map:
+            if entry["char_end"] > char_start and entry["char_start"] < char_end:
+                pages.append(entry["page_num"])
+        return pages
     
     def delete_document(self, user_id: int, document_id: int) -> Tuple[bool, str]:
         """

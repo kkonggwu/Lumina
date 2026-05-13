@@ -19,16 +19,48 @@
         <a-card title="逐题评分明细" :bordered="false" style="margin-top: 16px">
           <a-collapse v-model="activeKeys" accordion>
             <a-collapse-panel v-for="(item, index) in questionResults" :key="String(index)"
-              :header="getQuestionHeader(item, index)" :class="{ 'panel-error': item.status === 'error' }">
+              :header="getQuestionHeader(item, index)"
+              :class="{ 'panel-error': item.status === 'error', 'panel-ungraded': item._ungraded }">
               <template #extra>
-                <a-tag :color="getQuestionTagColor(item)" size="small">
+                <a-tag v-if="item._ungraded" color="default" size="small">暂未批改</a-tag>
+                <a-tag v-else :color="getQuestionTagColor(item)" size="small">
                   {{ item.report?.summary?.score ?? item.score ?? '-' }} /
                   {{ item.report?.summary?.max_score ?? item.max_score ?? '-' }}
                 </a-tag>
               </template>
 
-              <QuestionCard :index="index" :question="getQuestionContent(item)" :student-answer="getStudentAnswer(item)"
-                :report="item.report" />
+              <!-- 未评分占位 -->
+              <a-empty v-if="item._ungraded" description="该题目暂未批改" :image="false" style="padding: 16px 0" />
+
+              <!-- 人工评分 / AI 判题 均用 QuestionCard 渲染 -->
+              <template v-else>
+                <!-- 人工评分维度分（仅 dimension_scores 有数据时显示） -->
+                <div
+                  v-if="item.report?.scoring_details?.manual_dimension_scores"
+                  class="manual-dimension-scores"
+                >
+                  <div class="section-label">人工评分维度</div>
+                  <div class="dimension-list">
+                    <div
+                      v-for="(dimScore, dimName) in item.report.scoring_details.manual_dimension_scores"
+                      :key="dimName"
+                      class="dimension-row"
+                    >
+                      <div class="dimension-header">
+                        <span class="dimension-name">{{ dimName }}</span>
+                        <span class="dimension-score">{{ dimScore }} 分</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <QuestionCard
+                  :index="index"
+                  :question="getQuestionContent(item)"
+                  :student-answer="getStudentAnswer(item)"
+                  :report="item.report"
+                />
+              </template>
             </a-collapse-panel>
           </a-collapse>
         </a-card>
@@ -104,9 +136,88 @@ const subtitle = computed(() => {
 })
 
 const gradeInfo = computed(() => submission.value?.grade_info)
-const questionResults = computed(() => gradeInfo.value?.grading_rubric || [])
 const overallComment = computed(() => gradeInfo.value?.overall_comment || '')
 const questions = computed(() => assignment.value?.questions || [])
+
+/**
+ * 将 grading_rubric 条目规范化，确保每条都有可供 QuestionCard 使用的 report 字段。
+ * 兼容两种来源：
+ *   - AI 判题：已含完整 report（feedback / keypoint_analysis / scoring_details 等）
+ *   - 人工评分：只有 {score, comment, dimension_scores}，需补出 synthetic report
+ */
+const normalizeRubricItem = (item, question) => {
+  if (item.report) return item                          // AI 判题：直接使用
+
+  // 人工评分：从 comment / dimension_scores 构造 report
+  const syntheticReport = {
+    score: item.score ?? null,
+    max_score: item.max_score ?? question?.score ?? null,
+    summary: {
+      score: item.score ?? 0,
+      max_score: item.max_score ?? question?.score ?? 0,
+    },
+  }
+
+  if (item.comment) {
+    syntheticReport.feedback = item.comment
+  }
+
+  // 将 dimension_scores 转为 scoring_details.scoring_breakdown
+  if (item.dimension_scores && typeof item.dimension_scores === 'object') {
+    const breakdown = {}
+    for (const [dimName, dimScore] of Object.entries(item.dimension_scores)) {
+      breakdown[dimName] = { score_ratio: null, comment: `${dimName}: ${dimScore} 分` }
+    }
+    syntheticReport.scoring_details = {
+      type: question?.question_type === 'report' ? 'report'
+          : question?.question_type === 'python' ? 'python'
+          : question?.question_type === 'sql' ? 'sql'
+          : 'manual',
+      scoring_breakdown: breakdown,
+      manual_dimension_scores: item.dimension_scores,   // 原始维度分，供自定义展示
+    }
+  }
+
+  return { ...item, report: syntheticReport }
+}
+
+/**
+ * 以作业题目列表为基准，逐题合并评分细则。
+ * 保证即使 grading_rubric 只有部分题目，所有题目都会出现在报告中。
+ */
+const questionResults = computed(() => {
+  const rubric = gradeInfo.value?.grading_rubric || []
+  const allQuestions = questions.value
+
+  // 构建 question_id → rubric item 映射（支持数字和字符串 id）
+  const rubricMap = {}
+  for (const item of rubric) {
+    rubricMap[String(item.question_id)] = item
+  }
+
+  // 有作业题目时，以题目顺序为准，合并评分数据
+  if (allQuestions.length > 0) {
+    return allQuestions.map((q) => {
+      const qid = String(q.id)
+      const rubricItem = rubricMap[qid]
+      if (rubricItem) {
+        return normalizeRubricItem(rubricItem, q)
+      }
+      // 该题目暂无评分记录
+      return {
+        question_id: q.id,
+        status: 'pending',
+        score: null,
+        max_score: q.score,
+        report: null,
+        _ungraded: true,
+      }
+    })
+  }
+
+  // 作业题目列表为空时降级：直接渲染 rubric（规范化处理）
+  return rubric.map((item) => normalizeRubricItem(item, null))
+})
 
 const totalScore = computed(() => Number(submission.value?.total_score) || 0)
 const totalMaxScore = computed(() => Number(assignment.value?.total_score) || 100)
@@ -231,6 +342,50 @@ onMounted(loadData)
 
 .panel-error :deep(.ant-collapse-header) {
   color: #f5222d !important;
+}
+
+.panel-ungraded :deep(.ant-collapse-header) {
+  color: #999 !important;
+}
+
+.manual-dimension-scores {
+  margin-bottom: 16px;
+}
+
+.section-label {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.dimension-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dimension-row {
+  padding: 8px 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.dimension-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.dimension-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.dimension-score {
+  font-weight: 600;
+  color: #1890ff;
 }
 
 .recommended-docs-hint {
