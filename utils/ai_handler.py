@@ -256,9 +256,23 @@ class AIHandler:
             if 'category' in doc.metadata:
                 metadata_info += f" {doc.metadata['category']}"
 
-            doc_text = f"{metadata_info}\n{doc.page_content}\n"
+            remaining = max_length - current_length
+            if remaining <= 0:
+                break
 
-            if current_length + len(doc_text) > max_length:
+            content = doc.page_content or ""
+            doc_text = f"{metadata_info}\n{content}\n"
+
+            if len(doc_text) > remaining:
+                # 控制上下文长度，避免超长 chunk 触发 LLM 上下文超限。
+                min_reserved = len(metadata_info) + 16
+                if remaining <= min_reserved:
+                    break
+                allowed_content_len = max(remaining - min_reserved, 0)
+                truncated = content[:allowed_content_len].rstrip()
+                doc_text = f"{metadata_info}\n{truncated}\n...(内容已截断)\n"
+                context.append(doc_text)
+                current_length += len(doc_text)
                 break
 
             context.append(doc_text)

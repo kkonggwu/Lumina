@@ -15,7 +15,7 @@ from pathlib import Path
 from datetime import datetime
 
 from langchain_core.documents import Document
-from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,9 @@ class DataProcessor:
         'security': '网络安全',
     }
     CATEGORY_LABELS = list(set(CATEGORY_MAPPING.values()))
+    _FALLBACK_CHUNK_SIZE = 800
+    _FALLBACK_CHUNK_OVERLAP = 150
+    _FALLBACK_SEPARATORS = ["\n\n", "\n", "。", "；", "！", "？", ".", " ", ""]
 
     def __init__(self, data_path: str ):
         """
@@ -274,8 +277,10 @@ class DataProcessor:
             try:
                 # 检查文档是否适合Markdown分割
                 if not self._is_markdown_document(doc):
-                    logger.warning(f"文档 {doc.metadata.get('course_name', '未知')} 不适合Markdown分割，将作为整体处理")
-                    all_chunks.append(doc)
+                    logger.warning(
+                        f"文档 {doc.metadata.get('course_name', '未知')} 不适合Markdown分割，降级为字符窗口切割"
+                    )
+                    all_chunks.extend(self._plain_text_split(doc))
                     continue
 
                 # 对每个文档进行Markdown分割
@@ -307,16 +312,40 @@ class DataProcessor:
 
             except Exception as e:
                 logger.warning(f"文档 {doc.metadata.get('source', '未知')} Markdown分割失败: {e}")
-                # 如果Markdown分割失败，将整个文档作为一个chunk
-                doc.metadata.update({
-                    "chunk_id": str(uuid.uuid4()),
-                    "is_structured_chunk": False,
-                    "chunk_failed_reason": str(e)
-                })
-                all_chunks.append(doc)
+                # 如果Markdown分割失败，降级为字符窗口切割，避免整篇一块
+                all_chunks.extend(self._plain_text_split(doc, failed_reason=str(e)))
 
         logger.info(f"Markdown结构分割完成，生成 {len(all_chunks)} 个结构化块")
         return all_chunks
+
+    def _plain_text_split(self, doc: Document, failed_reason: str = "") -> List[Document]:
+        """
+        通用字符窗口切割，用于无标题文档或 Markdown 切割失败场景。
+        """
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self._FALLBACK_CHUNK_SIZE,
+            chunk_overlap=self._FALLBACK_CHUNK_OVERLAP,
+            separators=self._FALLBACK_SEPARATORS,
+        )
+
+        chunks = splitter.create_documents([doc.page_content], metadatas=[dict(doc.metadata)])
+        parent_id = doc.metadata.get("parent_id")
+
+        for i, chunk in enumerate(chunks):
+            child_id = str(uuid.uuid4())
+            chunk.metadata.update({
+                "chunk_id": child_id,
+                "parent_id": parent_id,
+                "doc_type": "child",
+                "chunk_index": i,
+                "is_structured_chunk": False,
+                "split_method": "recursive_char",
+            })
+            if failed_reason:
+                chunk.metadata["chunk_failed_reason"] = failed_reason
+            self.parent_child_map[child_id] = parent_id
+
+        return chunks
 
     def _is_markdown_document(self, doc: Document) -> bool:
         """检查文档是否适合Markdown分割"""

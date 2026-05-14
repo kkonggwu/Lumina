@@ -254,7 +254,7 @@ class DocumentService:
         """
         if file_type in ("md", "docx"):
             return self._split_markdown_style(
-                text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter
+                text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
             )
         elif file_type == "pdf":
             return self._split_pdf_style(
@@ -267,9 +267,22 @@ class DocumentService:
             )
 
     def _split_markdown_style(
-        self, text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter
+        self, text_content, base_meta, LangChainDocument, MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
     ):
         """Markdown / Word（已转 # 前缀）→ 标题语义切割。"""
+        # 对非标准 Markdown（无标题结构）长文档直接降级为滑动窗口切割，
+        # 避免整篇作为超大块进入 embedding / prompt 流程。
+        if (
+            len(text_content) > self._PLAIN_CHUNK_SIZE
+            and not self._has_markdown_headers(text_content)
+        ):
+            logger.info(
+                "检测到非标准 Markdown 长文档（无 # 标题），降级为 RecursiveCharacterTextSplitter 滑动窗口切割"
+            )
+            return self._split_plain_text(
+                text_content, base_meta, LangChainDocument, RecursiveCharacterTextSplitter
+            )
+
         splitter = MarkdownHeaderTextSplitter(
             headers_to_split_on=self._MD_HEADERS,
             strip_headers=False,
@@ -285,14 +298,22 @@ class DocumentService:
             if len(chunks) == 1 and len(chunks[0].page_content) > self._PLAIN_CHUNK_SIZE * 2:
                 logger.info("文档无 Markdown 标题结构，降级为字符窗口切割")
                 return self._split_plain_text(
-                    text_content, base_meta, LangChainDocument,
-                    __import__("langchain_text_splitters").RecursiveCharacterTextSplitter
+                    text_content, base_meta, LangChainDocument, RecursiveCharacterTextSplitter
                 )
             return chunks
         except Exception as e:
-            logger.warning(f"Markdown 标题切割失败，降级为整篇一块: {e}")
-            doc = LangChainDocument(page_content=text_content, metadata={**base_meta, "split_method": "fallback"})
-            return [doc]
+            logger.warning(f"Markdown 标题切割失败，降级为字符窗口切割: {e}")
+            return self._split_plain_text(
+                text_content, base_meta, LangChainDocument, RecursiveCharacterTextSplitter
+            )
+
+    @staticmethod
+    def _has_markdown_headers(text_content: str) -> bool:
+        """检测文本中是否包含 Markdown 标题结构。"""
+        if not text_content:
+            return False
+        lines = text_content.splitlines()
+        return any(line.lstrip().startswith("#") for line in lines if line.strip())
 
     def _split_pdf_style(
         self, text_content, file_metadata, base_meta,
