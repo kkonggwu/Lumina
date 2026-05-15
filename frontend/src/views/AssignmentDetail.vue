@@ -226,7 +226,40 @@
               </div>
 
               <!-- 输入控件按题型分发 -->
+              <template v-if="q.question_type === 'report'">
+                <div class="report-upload-block">
+                  <a-upload
+                    :file-list="reportFileList[String(q.id)] || []"
+                    :before-upload="(file) => handleReportFileSelect(q.id, file)"
+                    @remove="() => handleReportFileRemove(q.id)"
+                    :max-count="1"
+                    accept=".pdf,.docx"
+                    :disabled="mySubmission?.submission_status === 2"
+                  >
+                    <a-button :disabled="mySubmission?.submission_status === 2">
+                      <upload-outlined /> 上传报告附件（PDF / DOCX，≤30MB）
+                    </a-button>
+                  </a-upload>
+                  <div
+                    v-if="reportSubmittedInfo[String(q.id)] && !reportFiles[String(q.id)]"
+                    class="report-submitted-tip"
+                  >
+                    已提交附件：{{ reportSubmittedInfo[String(q.id)].file_name }}
+                    <span v-if="reportSubmittedInfo[String(q.id)].warnings?.length" style="color: #faad14; margin-left: 8px">
+                      解析提示：{{ reportSubmittedInfo[String(q.id)].warnings.join('；') }}
+                    </span>
+                  </div>
+                </div>
+                <a-textarea
+                  v-model:value="reportNotes[String(q.id)]"
+                  :placeholder="`可选：第 ${index + 1} 题报告的补充说明、写作思路或重点提示`"
+                  :rows="6"
+                  :disabled="mySubmission?.submission_status === 2"
+                  style="margin-top: 12px"
+                />
+              </template>
               <a-textarea
+                v-else
                 v-model:value="studentAnswers[String(q.id)]"
                 :placeholder="getAnswerPlaceholder(q.question_type, index)"
                 :rows="getAnswerRows(q.question_type)"
@@ -257,6 +290,7 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { message } from 'ant-design-vue'
+import { UploadOutlined } from '@ant-design/icons-vue'
 import {
   getAssignmentDetail,
   publishAssignment,
@@ -330,6 +364,34 @@ const grading = ref(false)
 const submittingAnswers = ref(false)
 const mySubmission = ref(null)
 const studentAnswers = reactive({})
+const reportFiles = reactive({}) // {questionId: File}
+const reportFileList = reactive({}) // {questionId: [{uid, name, status}]}
+const reportNotes = reactive({}) // {questionId: text_note}
+const reportSubmittedInfo = reactive({}) // {questionId: {file_name, warnings}}
+
+const MAX_REPORT_FILE_SIZE = 30 * 1024 * 1024
+
+const handleReportFileSelect = (questionId, file) => {
+  const key = String(questionId)
+  if (file.size > MAX_REPORT_FILE_SIZE) {
+    message.error('报告附件不能超过 30MB')
+    return false
+  }
+  const lowerName = (file.name || '').toLowerCase()
+  if (!lowerName.endsWith('.pdf') && !lowerName.endsWith('.docx')) {
+    message.error('仅支持 PDF 或 DOCX 格式的报告附件')
+    return false
+  }
+  reportFiles[key] = file
+  reportFileList[key] = [{ uid: file.uid || `${Date.now()}`, name: file.name, status: 'done' }]
+  return false // 阻止 antd 自动上传
+}
+
+const handleReportFileRemove = (questionId) => {
+  const key = String(questionId)
+  delete reportFiles[key]
+  reportFileList[key] = []
+}
 
 // 编辑关键点相关状态
 const editKpVisible = ref(false)
@@ -365,7 +427,17 @@ const loadMySubmission = async () => {
       mySubmission.value = res.data
       const answers = res.data.answers || {}
       Object.keys(answers).forEach((k) => {
-        studentAnswers[k] = answers[k]
+        const value = answers[k]
+        if (value && typeof value === 'object' && value.type === 'file') {
+          reportSubmittedInfo[k] = {
+            file_name: value.file_name,
+            warnings: value.warnings || [],
+          }
+          reportNotes[k] = value.text_note || ''
+          studentAnswers[k] = ''
+        } else {
+          studentAnswers[k] = value
+        }
       })
     }
   } catch {
@@ -423,17 +495,37 @@ const handleGradeAll = async () => {
 }
 
 const handleSubmitAnswers = async () => {
-  const filled = Object.values(studentAnswers).some((v) => v && v.trim())
-  if (!filled) {
-    message.warning('请至少作答一题')
+  const payload = {}
+  questions.value.forEach((q) => {
+    const key = String(q.id)
+    if (q.question_type === 'report') {
+      const note = (reportNotes[key] || '').trim()
+      const hasFile = !!reportFiles[key]
+      const submittedFile = reportSubmittedInfo[key]
+      if (note || hasFile || submittedFile) {
+        payload[key] = note
+      }
+    } else {
+      const value = studentAnswers[key]
+      if (value && String(value).trim()) {
+        payload[key] = value
+      }
+    }
+  })
+
+  const hasFile = Object.values(reportFiles).some((f) => !!f)
+  if (Object.keys(payload).length === 0 && !hasFile) {
+    message.warning('请至少作答一题或上传报告附件')
     return
   }
 
   submittingAnswers.value = true
   try {
-    const res = await submitAnswers(assignmentId.value, studentAnswers)
+    const res = await submitAnswers(assignmentId.value, payload, reportFiles)
     if (res.success) {
       message.success('提交成功')
+      Object.keys(reportFiles).forEach((k) => delete reportFiles[k])
+      Object.keys(reportFileList).forEach((k) => { reportFileList[k] = [] })
       await loadMySubmission()
     } else {
       message.error(res.message || '提交失败')
@@ -566,5 +658,16 @@ onMounted(loadData)
   font-size: 13px;
   background: #f6f8fa;
   line-height: 1.6;
+}
+.report-upload-block {
+  padding: 12px;
+  background: #fafafa;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+}
+.report-submitted-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #595959;
 }
 </style>

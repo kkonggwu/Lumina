@@ -15,4 +15,7 @@ langchain-huggingface
 langgraph
 pymilvus
 sentence-transformers
+PyMuPDF
+python-docx
+pypdf
 

@@ -68,6 +68,8 @@ class GradingService:
             if not enrolled:
                 return False, "未加入该课程，无法提交", None
 
+            answers = answers or {}
+
             # 校验答案中的题目 ID 是否都属于该作业
             question_ids = {str(q.get('id')) for q in (assignment.questions or [])}
             invalid_ids = set(answers.keys()) - question_ids

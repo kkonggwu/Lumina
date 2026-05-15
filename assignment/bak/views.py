@@ -177,7 +177,23 @@ class SubmitAnswersView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, assignment_id):
-        serializer = SubmitAnswersSerializer(data=request.data)
+        if request.FILES:
+            from assignment.services.submission_file_service import SubmissionFileService
+
+            raw_answers = request.data.get("answers", {})
+            success, message, merged_answers = SubmissionFileService.merge_report_files(
+                assignment_id=assignment_id,
+                student_id=request.user.id,
+                answers=raw_answers,
+                files=request.FILES,
+            )
+            if not success:
+                return JsonResponse({"success": False, "message": message}, status=400)
+            payload = {"answers": merged_answers}
+        else:
+            payload = request.data
+
+        serializer = SubmitAnswersSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse({"success": False, "message": "参数错误", "data": serializer.errors}, status=400)
 

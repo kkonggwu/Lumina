@@ -841,3 +841,26 @@ feedback 为面向学生的综合评语，需要：
 - feedback: 面向学生的综合评语
 - suggestions: 具体改进建议列表
 """
+
+VISION_CHART_PROMPT = """你是一位统计学课程助教，请宽松判断图片中是否包含大作业要求相关图表。
+
+请关注：
+1. 是否有图表。
+2. 图表类型是否像箱线图、折线图、散点图、饼图、热力图、概率密度图、PCA/因子分析图等。
+3. 是否大致可读，包括标题、坐标轴、图例、图注。
+4. 如果是概率密度图，是否大致像连续密度曲线。
+5. 不需要精确验证数据，只做课程报告助评层面的宽松判断。
+
+附近文本：
+{nearby_text}
+
+必须严格输出 JSON，不要输出 Markdown：
+{{
+  "has_chart": true,
+  "chart_types": ["scatter"],
+  "is_probability_plot": false,
+  "axes_readable": true,
+  "analysis_quality_hint": "图表基本可读，但图注解释较少",
+  "confidence": 0.82
+}}
+"""

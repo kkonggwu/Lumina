@@ -266,7 +266,7 @@ const getQuestionContent = (item) => {
 const getStudentAnswer = (item) => {
   const answers = submission.value?.answers || {}
   const qId = String(item.question_id)
-  return answers[qId] || ''
+  return answers[qId] !== undefined ? answers[qId] : ''
 }
 
 const getQuestionHeader = (item, index) => {

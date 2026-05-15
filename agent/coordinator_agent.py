@@ -34,6 +34,10 @@ class ScoringState(TypedDict):
     question_type: str
     # 编程题/SQL 题的测试用例（来自 assignment.questions[].test_cases）
     test_cases: Optional[list]
+    # 报告题评分细则（来自 assignment.questions[].grading_rubric）
+    grading_rubric: Optional[object]
+    # 报告题视觉证据（来自 PDF/DOCX 页面截图或图片识别）
+    visual_evidence: Optional[dict]
 
     # 检索阶段的结果 (retrieve)
     standard_answer: Optional[str]
@@ -85,15 +89,40 @@ class CoordinatorAgent:
             enable_milvus = os.getenv('ENABLE_MILVUS', 'false').lower() == 'true'
 
         self.retriever = RetrieverAgent(enable_milvus=enable_milvus)
-        self.analyzer = AnalyzerAgent()
-        self.scorer = ScorerAgent()
-        self.reporter = ReporterAgent()
-        self.code_grader = CodeGraderAgent()
-        self.report_grader = ReportGraderAgent()
+        self.analyzer = None
+        self.scorer = None
+        self.reporter = None
+        self.code_grader = None
+        self.report_grader = None
 
         self.graph = self._bulid_graph()
         self.compiled_graph = self.graph.compile()
         logger.info("Coordinator Agent compiled successfully")
+
+    def _get_analyzer(self) -> AnalyzerAgent:
+        if self.analyzer is None:
+            self.analyzer = AnalyzerAgent()
+        return self.analyzer
+
+    def _get_scorer(self) -> ScorerAgent:
+        if self.scorer is None:
+            self.scorer = ScorerAgent()
+        return self.scorer
+
+    def _get_reporter(self) -> ReporterAgent:
+        if self.reporter is None:
+            self.reporter = ReporterAgent()
+        return self.reporter
+
+    def _get_code_grader(self) -> CodeGraderAgent:
+        if self.code_grader is None:
+            self.code_grader = CodeGraderAgent()
+        return self.code_grader
+
+    def _get_report_grader(self) -> ReportGraderAgent:
+        if self.report_grader is None:
+            self.report_grader = ReportGraderAgent()
+        return self.report_grader
 
 
     def _bulid_graph(self) -> StateGraph:
@@ -235,7 +264,7 @@ class CoordinatorAgent:
 
         try:
             if q_type == "python":
-                result = await self.code_grader.grade_python(
+                result = await self._get_code_grader().grade_python(
                     question=state["question"],
                     standard_answer=state.get("standard_answer") or "",
                     student_code=state["student_answer"],
@@ -243,7 +272,7 @@ class CoordinatorAgent:
                     max_score=state["max_score"],
                 )
             else:
-                result = await self.code_grader.grade_sql(
+                result = await self._get_code_grader().grade_sql(
                     question=state["question"],
                     standard_answer=state.get("standard_answer") or "",
                     student_sql=state["student_answer"],
@@ -264,11 +293,14 @@ class CoordinatorAgent:
                 "feedback": feedback,
                 "suggestions": suggestions,
                 "scoring_details": details,
+                "needs_manual_review": details.get("needs_manual_review", False),
                 "summary": {
                     "score": score,
                     "max_score": state["max_score"],
                     "grade_level": details.get("grade_level", ""),
                     "percentage": round(score / state["max_score"] * 100, 1) if state["max_score"] > 0 else 0,
+                    "confidence": confidence,
+                    "needs_manual_review": details.get("needs_manual_review", False),
                 },
             }
 
@@ -300,15 +332,13 @@ class CoordinatorAgent:
         logger.info(f"进入报告评分节点，题目ID={state['question_id']}")
 
         try:
-            # 从题目元数据中获取教师自定义评分细则（若有）
-            grading_rubric = None
-
-            result = await self.report_grader.grade(
+            result = await self._get_report_grader().grade(
                 question=state["question"],
                 standard_answer=state.get("standard_answer") or "",
                 student_report=state["student_answer"],
                 max_score=state["max_score"],
-                grading_rubric=grading_rubric,
+                grading_rubric=state.get("grading_rubric"),
+                visual_evidence=state.get("visual_evidence"),
             )
 
             score = result.get("score", 0.0)
@@ -322,6 +352,7 @@ class CoordinatorAgent:
                 "max_score": state["max_score"],
                 "feedback": feedback,
                 "suggestions": suggestions,
+                "needs_manual_review": details.get("needs_manual_review", False),
                 "scoring_details": details,
                 "summary": {
                     "score": score,
@@ -405,14 +436,16 @@ class CoordinatorAgent:
             # 如果没有缓存的关键点，临时分析标准答案生成
             if not standard_keypoints:
                 logger.info("未找到缓存的标准答案关键点，临时分析生成")
-                std_result = await self.analyzer.analyze_standard_answer(
+                analyzer = self._get_analyzer()
+                std_result = await analyzer.analyze_standard_answer(
                     question=state['question'],
                     standard_answer=state['standard_answer']
                 )
                 standard_keypoints = std_result.get("keypoints", [])
 
             # 调用场景B：分析学生答案 + 与标准关键点对比
-            result = await self.analyzer.analyze_student_answer(
+            analyzer = self._get_analyzer()
+            result = await analyzer.analyze_student_answer(
                 question=state['question'],
                 student_answer=state['student_answer'],
                 standard_keypoints=standard_keypoints,
@@ -450,7 +483,7 @@ class CoordinatorAgent:
         logger.info(f"开始第 {attempt} 次评分")
 
         try:
-            result = await self.scorer.score(
+            result = await self._get_scorer().score(
                 max_score=state["max_score"],
                 missing_points=state["missing_keypoints"],
                 redundant_points=state["redundant_keypoints"],
@@ -577,7 +610,7 @@ class CoordinatorAgent:
         logger.info(f"开始第 {retry_count} 次重新评分")
         try:
             previous_scores = [h["score"] for h in state.get("scoring_history", [])]
-            result = await self.scorer.score(
+            result = await self._get_scorer().score(
                 max_score=state["max_score"],
                 missing_points=state["missing_keypoints"],
                 redundant_points=state["redundant_keypoints"],
@@ -624,7 +657,7 @@ class CoordinatorAgent:
         logger.info("开始生成最终报告")
 
         try:
-            result = await self.reporter.report(
+            result = await self._get_reporter().report(
                 question = state["question"],
                 student_answer = state["student_answer"],
                 standard_answer = state["standard_answer"],
@@ -775,6 +808,8 @@ class CoordinatorAgent:
             max_score: float,
             question_type: str = "essay",
             test_cases: Optional[list] = None,
+            grading_rubric: Optional[object] = None,
+            visual_evidence: Optional[dict] = None,
     ) -> dict:
         """
         单题评分入口，供 Service 层 / API 视图调用
@@ -786,6 +821,8 @@ class CoordinatorAgent:
         :param max_score: 该题满分
         :param question_type: 题目类型（essay/short_answer/python/sql/report）
         :param test_cases: 测试用例列表（python/sql 题专用）
+        :param grading_rubric: 报告题评分细则（report 题专用）
+        :param visual_evidence: 报告题视觉识别结果（report 题专用）
         :return: 格式化后的评分结果
         """
         logger.info(
@@ -802,6 +839,8 @@ class CoordinatorAgent:
             max_score=max_score,
             question_type=question_type,
             test_cases=test_cases,
+            grading_rubric=grading_rubric,
+            visual_evidence=visual_evidence,
         )
 
         try:
@@ -863,7 +902,9 @@ class CoordinatorAgent:
             q_max_score = float(q.get("score", 0))
             q_type = q.get("question_type", "essay")
             q_test_cases = q.get("test_cases")
-            student_answer = answer_map.get(str(q_id), "")
+            q_grading_rubric = q.get("grading_rubric")
+            raw_student_answer = answer_map.get(str(q_id), "")
+            student_answer, visual_evidence = await self._prepare_report_answer(q_type, raw_student_answer)
 
             if not student_answer.strip():
                 results.append({
@@ -889,6 +930,8 @@ class CoordinatorAgent:
                 max_score=q_max_score,
                 question_type=q_type,
                 test_cases=q_test_cases,
+                grading_rubric=q_grading_rubric,
+                visual_evidence=visual_evidence,
             )
             result["question_id"] = q_id
             results.append(result)
@@ -915,6 +958,41 @@ class CoordinatorAgent:
             "status": status,
         }
 
+    async def _prepare_report_answer(self, question_type: str, raw_answer) -> tuple:
+        """报告题支持文件型答案：返回可评分文本和视觉证据。"""
+        if question_type != "report" or not isinstance(raw_answer, dict):
+            return str(raw_answer or ""), None
+
+        text = raw_answer.get("text") or raw_answer.get("answer") or ""
+        text_note = raw_answer.get("text_note")
+        if text_note:
+            text = f"{text}\n\n【学生补充说明】\n{text_note}".strip()
+
+        images = raw_answer.get("images") or []
+        visual_evidence = {
+            "charts_detected": [],
+            "chart_findings": [],
+            "visual_summary": "未抽取到可供识别的报告图片或页面截图。",
+            "warnings": raw_answer.get("warnings", []),
+            "file_name": raw_answer.get("file_name"),
+            "file_path": raw_answer.get("file_path"),
+        }
+
+        if images:
+            try:
+                from utils.vision_ai_handler import VisionAIHandler
+
+                visual_result = await VisionAIHandler().analyze_report_images(images)
+                visual_evidence.update(visual_result)
+            except Exception as e:
+                logger.warning(f"报告视觉证据分析失败: {str(e)}", exc_info=True)
+                visual_evidence["warnings"].append(f"视觉分析失败: {str(e)}")
+
+        if not text.strip() and raw_answer.get("file_name"):
+            text = f"学生提交了报告附件：{raw_answer.get('file_name')}，但系统未能抽取到正文文本。"
+
+        return text, visual_evidence
+
     # ============================================================
     # 辅助方法
     # ============================================================
@@ -929,6 +1007,8 @@ class CoordinatorAgent:
             max_score: float,
             question_type: str = "essay",
             test_cases: Optional[list] = None,
+            grading_rubric: Optional[object] = None,
+            visual_evidence: Optional[dict] = None,
     ) -> ScoringState:
         """构造 LangGraph 流程的初始 State"""
         return {
@@ -939,6 +1019,8 @@ class CoordinatorAgent:
             "assignment_id": assignment_id,
             "question_type": question_type,
             "test_cases": test_cases,
+            "grading_rubric": grading_rubric,
+            "visual_evidence": visual_evidence,
             "max_score": max_score,
             "standard_answer": None,
             "reference_materials": None,

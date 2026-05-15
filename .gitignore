@@ -42,3 +42,4 @@ Thumbs.db
 # 日志文件
 *.log
 /logs/debug.log.1
+/tests/

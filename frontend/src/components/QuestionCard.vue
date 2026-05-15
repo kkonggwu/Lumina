@@ -21,8 +21,8 @@
     <!-- 学生答案：代码题用代码块样式，其他用普通文本 -->
     <div class="section" v-if="studentAnswer !== undefined">
       <div class="section-label">学生答案</div>
-      <pre v-if="isCodeType" class="code-block">{{ studentAnswer || '未作答' }}</pre>
-      <div v-else class="section-content student-answer">{{ studentAnswer || '未作答' }}</div>
+      <pre v-if="isCodeType" class="code-block">{{ displayedStudentAnswer || '未作答' }}</pre>
+      <div v-else class="section-content student-answer">{{ displayedStudentAnswer || '未作答' }}</div>
     </div>
 
     <!-- 评分报告详情 -->
@@ -136,12 +136,91 @@
         </div>
       </div>
 
-      <!-- 报告题评分明细：structure / content / writing / innovation -->
-      <div class="section" v-if="isReportType && reportBreakdown">
+      <!-- 报告题：人工复核提示 -->
+      <a-alert
+        v-if="isReportType && needsManualReview"
+        type="warning"
+        show-icon
+        class="manual-review-alert"
+        message="本题部分评分维度证据不足或模型置信度偏低，建议教师人工复核。"
+      />
+
+      <!-- 报告题：学生提交附件 -->
+      <div class="section" v-if="isReportType && reportAttachment">
+        <div class="section-label">学生提交附件</div>
+        <div class="report-attachment">
+          <paper-clip-outlined style="color: #1890ff; margin-right: 6px" />
+          {{ reportAttachment.file_name }}
+          <a-tag v-if="reportAttachment.file_type" color="blue" size="small" style="margin-left: 8px">
+            {{ reportAttachment.file_type.toUpperCase() }}
+          </a-tag>
+          <div
+            v-if="reportAttachment.warnings && reportAttachment.warnings.length"
+            class="attachment-warning"
+          >
+            解析提示：{{ reportAttachment.warnings.join('；') }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 报告题评分明细：动态 Rubric 维度 -->
+      <div class="section" v-if="isReportType && reportRubricDimensions.length">
+        <div class="section-label">报告评分明细（按评分细则维度）</div>
+        <div class="dimension-list">
+          <div
+            v-for="dim in reportRubricDimensions"
+            :key="dim.id || dim.name"
+            class="dimension-row"
+          >
+            <div class="dimension-header">
+              <span class="dimension-name">{{ dim.name }}</span>
+              <span class="dimension-weight">权重 {{ Math.round((dim.weight || 0) * 100) }}%</span>
+              <a-tag v-if="dim.requires_manual_review" color="orange" size="small">需复核</a-tag>
+              <span class="dimension-score">
+                {{ formatNumber(dim.score) }} / {{ formatNumber(dim.max_score) }}
+              </span>
+            </div>
+            <a-progress
+              :percent="Math.round((dim.score_ratio || 0) * 100)"
+              :stroke-color="getProgressColor(dim.score_ratio)"
+              size="small"
+              :show-info="true"
+            />
+            <div v-if="dim.confidence !== undefined" class="dimension-meta">
+              置信度：{{ (Number(dim.confidence || 0) * 100).toFixed(0) }}%
+            </div>
+            <div v-if="dim.reason" class="dimension-comment">{{ dim.reason }}</div>
+            <div v-if="(dim.evidence_quotes || []).length" class="dimension-extra">
+              <div class="kp-label covered-label">证据片段：</div>
+              <div
+                v-for="(quote, qi) in dim.evidence_quotes"
+                :key="'q'+qi"
+                class="evidence-quote"
+              >“{{ quote }}”</div>
+            </div>
+            <div v-if="(dim.missing_requirements || []).length" class="dimension-extra">
+              <div class="kp-label missing-label">缺失要求：</div>
+              <a-tag
+                v-for="(req, ri) in dim.missing_requirements"
+                :key="'r'+ri"
+                color="red"
+                size="small"
+                style="margin: 2px 4px 2px 0"
+              >{{ req }}</a-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 报告题：兼容旧版固定四维评分 -->
+      <div
+        class="section"
+        v-else-if="isReportType && reportBreakdown && reportLegacyDimensions.length"
+      >
         <div class="section-label">报告评分明细</div>
         <div class="dimension-list">
           <div
-            v-for="dim in reportDimensions"
+            v-for="dim in reportLegacyDimensions"
             :key="dim.key"
             class="dimension-row"
           >
@@ -162,7 +241,6 @@
           </div>
         </div>
 
-        <!-- 内容覆盖知识点 -->
         <div v-if="contentKeypoints.covered.length || contentKeypoints.missing.length" class="report-keypoints">
           <div v-if="contentKeypoints.covered.length" class="keypoints-list">
             <div class="kp-label covered-label">已覆盖知识点：</div>
@@ -176,6 +254,67 @@
               {{ kp }}
             </a-tag>
           </div>
+        </div>
+      </div>
+
+      <!-- 报告题：视觉证据 -->
+      <div class="section" v-if="isReportType && visualEvidence">
+        <div class="section-label">报告附件视觉识别</div>
+        <a-alert
+          v-if="visualEvidence.visual_summary"
+          type="info"
+          show-icon
+          class="visual-summary"
+          :message="visualEvidence.visual_summary"
+        />
+        <div
+          v-if="(visualEvidence.charts_detected || []).length"
+          class="visual-detected"
+        >
+          <span class="kp-label">识别到的图表类型：</span>
+          <a-tag
+            v-for="(chart, ci) in visualEvidence.charts_detected"
+            :key="'chart'+ci"
+            color="purple"
+            style="margin-right: 6px"
+          >{{ chart }}</a-tag>
+        </div>
+        <div
+          v-if="(visualEvidence.chart_findings || []).length"
+          class="visual-findings"
+        >
+          <div
+            v-for="(finding, fi) in visualEvidence.chart_findings"
+            :key="'finding'+fi"
+            class="visual-finding-row"
+          >
+            <div class="visual-finding-header">
+              <strong>
+                {{ finding.page ? `第 ${finding.page} 页` : `图 ${finding.image_index || fi + 1}` }}
+              </strong>
+              <a-tag :color="finding.has_chart ? 'green' : 'default'" size="small">
+                {{ finding.has_chart ? '检测到图表' : '未检测到图表' }}
+              </a-tag>
+              <a-tag v-if="finding.is_probability_plot" color="geekblue" size="small">概率密度图</a-tag>
+              <a-tag v-if="finding.requires_manual_review" color="orange" size="small">需复核</a-tag>
+              <span class="dimension-meta" style="margin-left: auto">
+                置信度 {{ (Number(finding.confidence || 0) * 100).toFixed(0) }}%
+              </span>
+            </div>
+            <div v-if="(finding.chart_types || []).length" class="finding-meta">
+              图表类型：
+              <a-tag v-for="(t, ti) in finding.chart_types" :key="'t'+ti" size="small">{{ t }}</a-tag>
+            </div>
+            <div v-if="finding.analysis_quality_hint" class="dimension-comment">
+              {{ finding.analysis_quality_hint }}
+            </div>
+          </div>
+        </div>
+        <div
+          v-if="!(visualEvidence.charts_detected || []).length && !(visualEvidence.chart_findings || []).length"
+          class="visual-empty"
+        >
+          未抽取到可识别的图表证据。
         </div>
       </div>
 
@@ -197,12 +336,12 @@
 
 <script setup>
 import { computed } from 'vue'
-import { CloseCircleOutlined, BulbOutlined } from '@ant-design/icons-vue'
+import { CloseCircleOutlined, BulbOutlined, PaperClipOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
   index: { type: Number, required: true },
   question: { type: Object, required: true },
-  studentAnswer: { type: String, default: undefined },
+  studentAnswer: { type: [String, Object], default: undefined },
   report: { type: Object, default: null },
 })
 
@@ -270,16 +409,58 @@ const codeDimensions = computed(() => {
   ]
 })
 
-// Report: structure 20 / content 40 / writing 20 / innovation 20
-const reportDimensions = computed(() => {
+// 兼容旧版固定四维评分：仅当 scoring_breakdown 中显式包含 structure/content/writing/innovation 时使用
+const reportLegacyDimensions = computed(() => {
   const bd = reportBreakdown.value
   if (!bd) return []
+  const legacyKeys = ['structure', 'content', 'writing', 'innovation']
+  const hasLegacy = legacyKeys.some((k) => bd[k] && typeof bd[k] === 'object')
+  if (!hasLegacy) return []
   return [
     { key: 'structure', label: '结构完整性', weight: 0.2, ...(bd.structure || {}) },
     { key: 'content', label: '内容质量', weight: 0.4, ...(bd.content || {}) },
     { key: 'writing', label: '语言表达', weight: 0.2, ...(bd.writing || {}) },
     { key: 'innovation', label: '创新思考', weight: 0.2, ...(bd.innovation || {}) },
   ]
+})
+
+// 新版 Rubric 评分：直接读取 dimension_results 数组
+const reportRubricDimensions = computed(() => {
+  const details = props.report?.scoring_details
+  if (!details) return []
+  if (Array.isArray(details.dimension_results) && details.dimension_results.length) {
+    return details.dimension_results
+  }
+  return []
+})
+
+const needsManualReview = computed(() => {
+  const r = props.report || {}
+  if (r.needs_manual_review === true) return true
+  const details = r.scoring_details || {}
+  if (details.needs_manual_review === true) return true
+  if (Array.isArray(details.dimension_results)) {
+    return details.dimension_results.some((d) => d.requires_manual_review)
+  }
+  return false
+})
+
+const visualEvidence = computed(() => {
+  const ev = props.report?.scoring_details?.visual_evidence
+  if (!ev) return null
+  return ev
+})
+
+const reportAttachment = computed(() => {
+  const answer = props.studentAnswer
+  if (answer && typeof answer === 'object' && answer.type === 'file') {
+    return {
+      file_name: answer.file_name,
+      file_type: answer.file_type,
+      warnings: answer.warnings || [],
+    }
+  }
+  return null
 })
 
 const testCaseResults = computed(() => {
@@ -340,6 +521,28 @@ const formatValue = (value) => {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
 }
+
+const formatNumber = (value) => {
+  const num = Number(value)
+  if (Number.isFinite(num)) return num.toFixed(2)
+  return value ?? '-'
+}
+
+const displayedStudentAnswer = computed(() => {
+  const answer = props.studentAnswer
+  if (answer === undefined || answer === null) return ''
+  if (typeof answer === 'string') return answer
+  if (typeof answer === 'object') {
+    if (answer.type === 'file') {
+      const parts = [`【提交了报告附件：${answer.file_name || '未命名文件'}】`]
+      if (answer.text_note) parts.push(answer.text_note)
+      else if (answer.text) parts.push(answer.text)
+      return parts.join('\n\n')
+    }
+    return JSON.stringify(answer)
+  }
+  return String(answer)
+})
 
 const formatKeypoint = (kp) => {
   if (typeof kp === 'string') return kp
@@ -487,5 +690,76 @@ const formatKeypoint = (kp) => {
 }
 .report-keypoints {
   margin-top: 12px;
+}
+.manual-review-alert {
+  margin-bottom: 16px;
+}
+.report-attachment {
+  padding: 10px 12px;
+  background: #f0f5ff;
+  border-left: 3px solid #1890ff;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.attachment-warning {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #faad14;
+}
+.dimension-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+}
+.dimension-extra {
+  margin-top: 6px;
+}
+.evidence-quote {
+  padding: 4px 8px;
+  background: #fff;
+  border-left: 3px solid #91d5ff;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #444;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.visual-summary {
+  margin-bottom: 8px;
+}
+.visual-detected {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.visual-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.visual-finding-row {
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+.visual-finding-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.finding-meta {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+.visual-empty {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #999;
+  background: #fafafa;
+  border-radius: 6px;
 }
 </style>

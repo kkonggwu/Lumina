@@ -38,10 +38,7 @@ def validate_question_payload(value):
             _validate_sql_cases(i, q.get("test_cases"))
         elif question_type == "report":
             rubric = q.get("grading_rubric")
-            if rubric is not None and not isinstance(rubric, (str, dict)):
-                raise serializers.ValidationError(
-                    f"第 {i+1} 题 grading_rubric 格式非法，须为字符串或对象"
-                )
+            _validate_report_rubric(i, rubric)
     return value
 
 
@@ -87,6 +84,87 @@ def _validate_sql_cases(question_index, test_cases):
             raise serializers.ValidationError(
                 f"第 {question_index + 1} 题第 {case_index + 1} 个测试用例缺少 expected_rows"
             )
+
+
+def _validate_report_rubric(question_index, rubric):
+    """
+    校验报告题评分细则。
+
+    兼容两种格式：
+    - str: 教师自由文本评分说明
+    - dict: 结构化 Rubric，形如 {"dimensions": [{id, name, weight, criteria, required_evidence}]}
+    """
+    if rubric is None or isinstance(rubric, str):
+        return
+
+    if not isinstance(rubric, dict):
+        raise serializers.ValidationError(
+            f"第 {question_index + 1} 题 grading_rubric 格式非法，须为字符串或对象"
+        )
+
+    dimensions = rubric.get("dimensions")
+    if not isinstance(dimensions, list) or not dimensions:
+        raise serializers.ValidationError(
+            f"第 {question_index + 1} 题 report 类型的结构化 grading_rubric 必须包含非空 dimensions 列表"
+        )
+
+    total_weight = 0.0
+    seen_ids = set()
+    for dimension_index, dimension in enumerate(dimensions):
+        if not isinstance(dimension, dict):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {dimension_index + 1} 个评分维度必须为对象"
+            )
+
+        dim_id = dimension.get("id")
+        name = dimension.get("name")
+        weight = dimension.get("weight")
+        criteria = dimension.get("criteria")
+        required_evidence = dimension.get("required_evidence", [])
+
+        if not dim_id or not isinstance(dim_id, str):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题第 {dimension_index + 1} 个评分维度缺少字符串 id"
+            )
+        if dim_id in seen_ids:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 id 重复: {dim_id}"
+            )
+        seen_ids.add(dim_id)
+
+        if not name or not isinstance(name, str):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 缺少字符串 name"
+            )
+
+        if not isinstance(weight, (int, float)) or weight <= 0:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 的 weight 必须为正数"
+            )
+        total_weight += float(weight)
+
+        if not isinstance(criteria, (str, list)) or not criteria:
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 的 criteria 必须为非空字符串或列表"
+            )
+        if isinstance(criteria, list) and not all(isinstance(item, str) and item.strip() for item in criteria):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 的 criteria 列表元素必须为非空字符串"
+            )
+
+        if not isinstance(required_evidence, (str, list)):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 的 required_evidence 必须为字符串或列表"
+            )
+        if isinstance(required_evidence, list) and not all(isinstance(item, str) for item in required_evidence):
+            raise serializers.ValidationError(
+                f"第 {question_index + 1} 题评分维度 {dim_id} 的 required_evidence 列表元素必须为字符串"
+            )
+
+    if not (0.99 <= total_weight <= 1.01 or 99.0 <= total_weight <= 101.0):
+        raise serializers.ValidationError(
+            f"第 {question_index + 1} 题 grading_rubric 权重和必须为 1 或 100，当前为 {round(total_weight, 4)}"
+        )
 
 
 # ==================== 作业 CRUD ====================
@@ -183,7 +261,7 @@ class AssignmentListSerializer(serializers.ModelSerializer):
 class SubmitAnswersSerializer(serializers.Serializer):
     """学生提交答案请求校验"""
     answers = serializers.DictField(
-        child=serializers.CharField(allow_blank=True),
+        child=serializers.JSONField(),
         required=True,
         help_text='答案字典，key 为题目 ID 字符串，value 为答案内容'
     )

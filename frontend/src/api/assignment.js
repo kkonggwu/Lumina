@@ -62,11 +62,30 @@ export const updateQuestionKeypoints = (
 
 // ==================== 提交与判题 ====================
 
-export const submitAnswers = (assignmentId, answers) => {
+export const submitAnswers = (assignmentId, answers, reportFiles = {}) => {
+  const hasFiles = Object.values(reportFiles || {}).some((file) => !!file);
+  if (!hasFiles) {
+    return request({
+      url: `/assignment/${assignmentId}/submit/`,
+      method: "post",
+      data: { answers },
+    });
+  }
+
+  const formData = new FormData();
+  formData.append("answers", JSON.stringify(answers || {}));
+  Object.entries(reportFiles).forEach(([questionId, file]) => {
+    if (file) {
+      formData.append(`report_files_${questionId}`, file);
+    }
+  });
+
   return request({
     url: `/assignment/${assignmentId}/submit/`,
     method: "post",
-    data: { answers },
+    data: formData,
+    timeout: 300000,
+    headers: { "Content-Type": "multipart/form-data" },
   });
 };
 
