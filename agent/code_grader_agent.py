@@ -13,9 +13,6 @@ import logging
 import re
 from typing import Optional, List
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
-
 from sandbox.service import SandboxService
 from utils.ai_handler import AIHandler
 from utils.prompt_template import AGENT_PYTHON_GRADING_PROMPT, AGENT_SQL_GRADING_PROMPT
@@ -36,21 +33,15 @@ class CodeGraderAgent:
 
     def __init__(self, provider: str = "qwen"):
         self.ai_handler = AIHandler.create_default(provider=provider)
-        self.python_chain = self._build_python_chain()
-        self.sql_chain = self._build_sql_chain()
         self.python_weights = {"test": 0.7, "llm": 0.3}
         self.sql_weights = {"test": 0.75, "llm": 0.25}
 
     async def aclose(self):
         await self.ai_handler.aclose()
 
-    def _build_python_chain(self):
-        prompt = PromptTemplate.from_template(AGENT_PYTHON_GRADING_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
-
-    def _build_sql_chain(self):
-        prompt = PromptTemplate.from_template(AGENT_SQL_GRADING_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
+    async def _invoke_prompt(self, template: str, **variables) -> str:
+        prompt = template.format(**variables)
+        return await self.ai_handler.get_completion(prompt)
 
     # ------------------------------------------------------------------
     # 公共入口
@@ -83,18 +74,19 @@ class CodeGraderAgent:
         test_cases_text = self._format_test_cases(test_cases, sandbox_result)
 
         try:
-            raw = await self.python_chain.ainvoke({
-                "question": question,
-                "standard_answer": standard_answer or "（未提供标准答案）",
-                "student_code": student_code,
-                "test_cases": test_cases_text,
-                "max_score": max_score,
-            })
+            raw = await self._invoke_prompt(
+                AGENT_PYTHON_GRADING_PROMPT,
+                question=question,
+                standard_answer=standard_answer or "（未提供标准答案）",
+                student_code=student_code,
+                test_cases=test_cases_text,
+                max_score=max_score,
+            )
             result = self._parse_json_response(raw)
             return self._build_python_result(result, max_score, sandbox_result)
 
         except Exception as e:
-            logger.error(f"Python 代码评分失败：{str(e)}", exc_info=True)
+            logger.error(f"Python 代码评分失败：{type(e).__name__}: {str(e)}", exc_info=True)
             return self._sandbox_only_result(
                 question_type="python",
                 max_score=max_score,
@@ -130,18 +122,19 @@ class CodeGraderAgent:
         test_cases_text = self._format_test_cases(test_cases, sandbox_result)
 
         try:
-            raw = await self.sql_chain.ainvoke({
-                "question": question,
-                "standard_answer": standard_answer or "（未提供标准答案）",
-                "student_sql": student_sql,
-                "test_cases": test_cases_text,
-                "max_score": max_score,
-            })
+            raw = await self._invoke_prompt(
+                AGENT_SQL_GRADING_PROMPT,
+                question=question,
+                standard_answer=standard_answer or "（未提供标准答案）",
+                student_sql=student_sql,
+                test_cases=test_cases_text,
+                max_score=max_score,
+            )
             result = self._parse_json_response(raw)
             return self._build_sql_result(result, max_score, sandbox_result)
 
         except Exception as e:
-            logger.error(f"SQL 语句评分失败：{str(e)}", exc_info=True)
+            logger.error(f"SQL 语句评分失败：{type(e).__name__}: {str(e)}", exc_info=True)
             return self._sandbox_only_result(
                 question_type="sql",
                 max_score=max_score,

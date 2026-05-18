@@ -14,9 +14,6 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from langchain_core.messages import HumanMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from utils.ai_handler import AIHandler
@@ -44,15 +41,9 @@ class ReportGraderAgent:
 
     def __init__(self, provider: str = "qwen"):
         self.ai_handler = AIHandler.create_default(provider=provider)
-        self.summary_chain = self._build_summary_chain()
 
     async def aclose(self):
         await self.ai_handler.aclose()
-
-    def _build_summary_chain(self):
-        """复用已有的摘要 Prompt 对超长报告进行压缩"""
-        prompt = PromptTemplate.from_template(CONCISE_SUMMARY_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
 
     # ------------------------------------------------------------------
     # 公共入口
@@ -290,13 +281,14 @@ class ReportGraderAgent:
                 evidence_context=evidence_context,
                 visual_context=visual_context,
             )
-            response = await self.ai_handler.llm.ainvoke(
-                [HumanMessage(content=prompt_text)]
-            )
-            raw = getattr(response, "content", "") or ""
+            raw = await self.ai_handler.get_completion(prompt_text)
             parsed = self._parse_json_response(raw)
         except Exception as e:
-            logger.warning(f"维度 {dimension['id']} 评分失败，标记人工复核: {str(e)}")
+            logger.warning(
+                f"维度 {dimension['id']} 评分失败，标记人工复核: "
+                f"{type(e).__name__}: {str(e)}",
+                exc_info=True,
+            )
             parsed = {
                 "score_ratio": 0.0,
                 "confidence": 0.0,
@@ -565,7 +557,8 @@ class ReportGraderAgent:
             f"进行摘要压缩后再评分"
         )
         try:
-            summary = await self.summary_chain.ainvoke({"query": report})
+            summary_prompt = CONCISE_SUMMARY_PROMPT.replace("{query}", report)
+            summary = await self.ai_handler.get_completion(summary_prompt)
             return f"【以下为报告摘要，原文已超出长度限制】\n\n{summary}"
         except Exception as e:
             logger.warning(f"摘要生成失败，使用截断版本：{str(e)}")

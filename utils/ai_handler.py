@@ -136,38 +136,54 @@ class AIHandler:
         :param temperature:
         :return:
         """
-        try:
-            logger.info(f"调用API: provider={self.provider}")
-            max_tokens = max_tokens or self.config["max_tokens"]
-            temperature = temperature or self.config["temperature"]
+        logger.info(f"调用API: provider={self.provider}")
+        max_tokens = max_tokens or self.config["max_tokens"]
+        temperature = self.config["temperature"] if temperature is None else temperature
+        max_retries = self.config.get("max_retries", APIConfig.MAX_RETRIES)
+        retry_delay = self.config.get("retry_delay", APIConfig.RETRY_DELAY)
+        last_error = None
 
-            response = await self.client.chat.completions.create(
-                model=self.config["model"],
-                messages=[
-                    ChatCompletionSystemMessageParam(role="system", content="你是一个助手"),
-                    ChatCompletionUserMessageParam(role="user", content=prompt)
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature or self.config["temperature"]
-            )
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.config["model"],
+                    messages=[
+                        ChatCompletionSystemMessageParam(role="system", content="你是一个助手"),
+                        ChatCompletionUserMessageParam(role="user", content=prompt)
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
 
-            result = response.choices[0].message.content
-            logger.info(f"API调用成功: 结果长度={len(result)}")
-            return result
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"API调用错误: {error_msg}")
+                result = response.choices[0].message.content
+                logger.info(f"API调用成功: 结果长度={len(result)}")
+                return result
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                error_type = type(e).__name__
 
-            if "insufficient_user_quota" in error_msg:
-                raise Exception("API配额不足，请检查账户余额或联系服务提供商")
-            elif "invalid_api_key" in error_msg:
-                raise Exception("API密钥无效，请检查API Key是否正确")
-            elif "model_not_found" in error_msg:
-                raise Exception(f"模型 {self.config['model']} 不可用，请尝试其他模型")
-            elif "Invalid max_tokens" in error_msg:
-                raise Exception(f"Token数量超出限制，当前提供商最大支持 {self.config['max_tokens']} tokens")
-            else:
-                raise Exception(f"API调用失败: {error_msg}")
+                if "insufficient_user_quota" in error_msg:
+                    raise Exception("API配额不足，请检查账户余额或联系服务提供商")
+                elif "invalid_api_key" in error_msg:
+                    raise Exception("API密钥无效，请检查API Key是否正确")
+                elif "model_not_found" in error_msg:
+                    raise Exception(f"模型 {self.config['model']} 不可用，请尝试其他模型")
+                elif "Invalid max_tokens" in error_msg:
+                    raise Exception(f"Token数量超出限制，当前提供商最大支持 {self.config['max_tokens']} tokens")
+
+                if attempt < max_retries and error_type in {"APIConnectionError", "APITimeoutError", "ConnectError", "ReadTimeout"}:
+                    logger.warning(
+                        f"API连接失败，准备重试 {attempt}/{max_retries}: "
+                        f"{error_type}: {error_msg}"
+                    )
+                    await asyncio.sleep(retry_delay * attempt)
+                    continue
+
+                logger.error(f"API调用错误: {error_type}: {error_msg}", exc_info=True)
+                raise Exception(f"API调用失败: {error_type}: {error_msg}") from e
+
+        raise Exception(f"API调用失败: {str(last_error)}")
 
     def chat_with_docs_stream(self, query: str, context_docs: List[Document]) -> Iterator[str]:
         """
