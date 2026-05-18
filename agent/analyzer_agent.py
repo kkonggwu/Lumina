@@ -11,9 +11,6 @@ import logging
 import re
 from typing import Optional, List
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
-
 from utils.ai_handler import AIHandler
 from utils.prompt_template import AGENT_KEYPOINT_EXTRACTION_PROMPT, AGENT_KEYPOINT_COMPARISON_PROMPT
 
@@ -24,24 +21,28 @@ class AnalyzerAgent:
     """
     def __init__(self, provider: str = "qwen"):
         self.ai_handler = AIHandler.create_default(provider=provider)
-        self.extraction_chain = self._build_extraction_chain()
-        self.comparison_chain = self._build_comparison_chain()
 
-    def _build_extraction_chain(self):
-        """
-        构建关键掉提取链
-        :return:
-        """
-        prompt = PromptTemplate.from_template(AGENT_KEYPOINT_EXTRACTION_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
+    async def aclose(self):
+        await self.ai_handler.aclose()
 
-    def _build_comparison_chain(self):
+    @staticmethod
+    def _render_prompt(template: str, **variables) -> str:
         """
-        构建关键点对比链
-        :return:
+        只替换明确声明的业务变量，避免 JSON 示例中的字面花括号被
+        LangChain/f-string 模板解析器误判为占位符。
         """
-        prompt = PromptTemplate.from_template(AGENT_KEYPOINT_COMPARISON_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
+        if not variables:
+            return template
+        pattern = r"\{(" + "|".join(re.escape(key) for key in variables) + r")\}"
+        return re.sub(
+            pattern,
+            lambda match: "" if variables[match.group(1)] is None else str(variables[match.group(1)]),
+            template,
+        )
+
+    async def _invoke_prompt(self, template: str, **variables) -> str:
+        prompt = self._render_prompt(template, **variables)
+        return await self.ai_handler.get_completion(prompt)
 
     @staticmethod
     def _parse_json_response(text: str) -> dict:
@@ -98,11 +99,12 @@ class AnalyzerAgent:
         logger.info(f"[场景A]: 开始分析标准答案的关键要点，题目：{question[:50]}")
         try:
             # 调用关键点提取链
-            raw_result = await self.extraction_chain.ainvoke({
-                "answer_type": "标准答案",
-                "question": question,
-                "answer": standard_answer
-            })
+            raw_result = await self._invoke_prompt(
+                AGENT_KEYPOINT_EXTRACTION_PROMPT,
+                answer_type="标准答案",
+                question=question,
+                answer=standard_answer,
+            )
             result = self._parse_json_response(raw_result)
             keypoints = result.get("keypoints", [])
             logger.info(f"[场景A]：标准答案分析完成，提取到 {len(keypoints)} 个关键点")
@@ -141,23 +143,25 @@ class AnalyzerAgent:
         logger.info(f"场景B：开始分析学生答案，题目：{question[:50]}")
         try:
             # 1. 提取学生答案关键要点
-            raw_result = await self.extraction_chain.ainvoke({
-                "answer_type": "学生答案",
-                "question": question,
-                "answer": student_answer
-            })
+            raw_result = await self._invoke_prompt(
+                AGENT_KEYPOINT_EXTRACTION_PROMPT,
+                answer_type="学生答案",
+                question=question,
+                answer=student_answer,
+            )
             extraction_result = self._parse_json_response(raw_result)
             student_keypoints = extraction_result.get("keypoints", [])
 
             logger.info(f"场景B：学生关键点提取完成，共 {len(student_keypoints)} 条")
 
             # 2. 与标准关键要点对比
-            raw_comparison = await self.comparison_chain.ainvoke({
-                "question": question,
-                "standard_keypoints": self._format_keypoints_for_prompt(standard_keypoints),
-                "student_keypoints": self._format_keypoints_for_prompt(student_keypoints),
-                "reference_materials": self._format_materials_for_prompt(reference_materials)
-            })
+            raw_comparison = await self._invoke_prompt(
+                AGENT_KEYPOINT_COMPARISON_PROMPT,
+                question=question,
+                standard_keypoints=self._format_keypoints_for_prompt(standard_keypoints),
+                student_keypoints=self._format_keypoints_for_prompt(student_keypoints),
+                reference_materials=self._format_materials_for_prompt(reference_materials),
+            )
             comparison_result = self._parse_json_response(raw_comparison)
 
             # 提取对比结果

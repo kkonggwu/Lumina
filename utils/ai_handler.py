@@ -7,6 +7,7 @@
 @Version: 1.0
 """
 import asyncio
+import inspect
 import os
 from typing import List, Iterator, Optional, AsyncIterator
 
@@ -59,6 +60,29 @@ class AIHandler:
         self.prompt_template = PromptTemplate.from_template(CHAT_PROMPT_USING_CONTEXT)
 
         logger.info(f"初始化AI处理器: {provider}")
+
+    async def aclose(self):
+        """显式关闭异步 HTTP 客户端，避免 async_to_sync 关闭事件循环后再清理连接。"""
+        clients = [
+            self.client,
+            getattr(self.llm, "async_client", None),
+            getattr(self.llm, "root_async_client", None),
+            getattr(getattr(self.llm, "async_client", None), "root_client", None),
+        ]
+        seen = set()
+        for client in clients:
+            if client is None or id(client) in seen:
+                continue
+            seen.add(id(client))
+            close = getattr(client, "aclose", None) or getattr(client, "close", None)
+            if not close:
+                continue
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as e:
+                logger.debug(f"关闭AI客户端时忽略异常: {str(e)}")
 
     @classmethod
     def create_default(cls, provider: str = "qwen") -> "AIHandler":

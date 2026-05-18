@@ -41,6 +41,9 @@ class CodeGraderAgent:
         self.python_weights = {"test": 0.7, "llm": 0.3}
         self.sql_weights = {"test": 0.75, "llm": 0.25}
 
+    async def aclose(self):
+        await self.ai_handler.aclose()
+
     def _build_python_chain(self):
         prompt = PromptTemplate.from_template(AGENT_PYTHON_GRADING_PROMPT)
         return prompt | self.ai_handler.llm | StrOutputParser()

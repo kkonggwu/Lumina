@@ -7,10 +7,8 @@
 @Version: 1.0
 """
 from datetime import datetime
+import re
 from typing import Optional, List
-
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 
 from utils.ai_handler import AIHandler
 from utils.logger import get_logger
@@ -24,19 +22,28 @@ class ReporterAgent:
     """
     def __init__(self, provider: str = "qwen"):
         self.ai_handler = AIHandler.create_default(provider=provider)
-        self.feedback_chain = self._build_feedback_chain()
-        self.suggestion_chain = self. _build_suggestion_chain()
         logger.info(f"ReporterAgent 初始化完成")
 
-    def _build_feedback_chain(self):
-        """构建综合评语生成链"""
-        prompt = PromptTemplate.from_template(AGENT_REPORT_COMMENT_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
+    async def aclose(self):
+        await self.ai_handler.aclose()
 
-    def _build_suggestion_chain(self):
-        """构建改进建议生成链"""
-        prompt = PromptTemplate.from_template(AGENT_REPORT_SUGGESTION_PROMPT)
-        return prompt | self.ai_handler.llm | StrOutputParser()
+    @staticmethod
+    def _render_prompt(template: str, **variables) -> str:
+        """
+        只替换已知业务变量，避免输出格式示例里的 JSON 花括号被模板解析器误判。
+        """
+        if not variables:
+            return template
+        pattern = r"\{(" + "|".join(re.escape(key) for key in variables) + r")\}"
+        return re.sub(
+            pattern,
+            lambda match: "" if variables[match.group(1)] is None else str(variables[match.group(1)]),
+            template,
+        )
+
+    async def _invoke_prompt(self, template: str, **variables) -> str:
+        prompt = self._render_prompt(template, **variables)
+        return await self.ai_handler.get_completion(prompt)
 
     async def report(
             self,
@@ -147,15 +154,16 @@ class ReporterAgent:
         :return:
         """
         try:
-            feedback = await self.feedback_chain.ainvoke({
-                "question": question,
-                "student_answer": student_answer,
-                "score": score,
-                "max_score": max_score,
-                "matching_keypoints": matching_keypoints,
-                "missing_keypoints": missing_keypoints,
-                "redundant_keypoints": redundant_keypoints
-            })
+            feedback = await self._invoke_prompt(
+                AGENT_REPORT_COMMENT_PROMPT,
+                question=question,
+                student_answer=student_answer,
+                score=score,
+                max_score=max_score,
+                matching_keypoints=matching_keypoints,
+                missing_keypoints=missing_keypoints,
+                redundant_keypoints=redundant_keypoints,
+            )
             logger.info(f"LLM 评语生成成功")
             return feedback.strip()
         except Exception as e:
@@ -183,12 +191,13 @@ class ReporterAgent:
             return ["答题完整，继续努力！"]
 
         try:
-            raw = await self.suggestion_chain.ainvoke({
-                "question": question,
-                "missing_keypoints": missing_keypoints,
-                "redundant_keypoints": redundant_keypoints,
-                "reference_hint": reference_hint
-            })
+            raw = await self._invoke_prompt(
+                AGENT_REPORT_SUGGESTION_PROMPT,
+                question=question,
+                missing_keypoints=missing_keypoints,
+                redundant_keypoints=redundant_keypoints,
+                reference_hint=reference_hint,
+            )
             suggestions = self._parse_suggestions(raw)
             logger.info(f"LLM 改进建议生成成功，共 {len(suggestions)} 条")
             return suggestions

@@ -124,6 +124,19 @@ class CoordinatorAgent:
             self.report_grader = ReportGraderAgent()
         return self.report_grader
 
+    async def aclose(self):
+        """关闭本次评分过程中懒加载出的异步 AI 客户端。"""
+        for agent in (
+            self.analyzer,
+            self.scorer,
+            self.reporter,
+            self.code_grader,
+            self.report_grader,
+        ):
+            close = getattr(agent, "aclose", None)
+            if close:
+                await close()
+
 
     def _bulid_graph(self) -> StateGraph:
         workflow = StateGraph(ScoringState)
@@ -982,7 +995,11 @@ class CoordinatorAgent:
             try:
                 from utils.vision_ai_handler import VisionAIHandler
 
-                visual_result = await VisionAIHandler().analyze_report_images(images)
+                vision_handler = VisionAIHandler()
+                try:
+                    visual_result = await vision_handler.analyze_report_images(images)
+                finally:
+                    await vision_handler.aclose()
                 visual_evidence.update(visual_result)
             except Exception as e:
                 logger.warning(f"报告视觉证据分析失败: {str(e)}", exc_info=True)

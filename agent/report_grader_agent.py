@@ -46,6 +46,9 @@ class ReportGraderAgent:
         self.ai_handler = AIHandler.create_default(provider=provider)
         self.summary_chain = self._build_summary_chain()
 
+    async def aclose(self):
+        await self.ai_handler.aclose()
+
     def _build_summary_chain(self):
         """复用已有的摘要 Prompt 对超长报告进行压缩"""
         prompt = PromptTemplate.from_template(CONCISE_SUMMARY_PROMPT)

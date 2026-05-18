@@ -193,48 +193,51 @@ class GradingService:
         analyzer = AnalyzerAgent()
         results = {}
 
-        for q in questions:
-            q_id = str(q.get('id'))
-            content = q.get('content', '')
-            standard_answer = q.get('standard_answer', '')
-            q_type = q.get('question_type', 'essay')
+        try:
+            for q in questions:
+                q_id = str(q.get('id'))
+                content = q.get('content', '')
+                standard_answer = q.get('standard_answer', '')
+                q_type = q.get('question_type', 'essay')
 
-            # 代码题和报告题不走关键点流程，跳过预分析
-            if q_type in GradingService._NON_KEYPOINT_TYPES:
-                logger.info(f"题目 {q_id} 类型={q_type}，跳过关键点预分析")
-                results[q_id] = {
-                    'success': True,
-                    'skipped': True,
-                    'reason': f'{q_type} 类型题目由专用 Agent 评分，无需关键点预分析',
-                    'keypoints': [],
-                }
-                continue
+                # 代码题和报告题不走关键点流程，跳过预分析
+                if q_type in GradingService._NON_KEYPOINT_TYPES:
+                    logger.info(f"题目 {q_id} 类型={q_type}，跳过关键点预分析")
+                    results[q_id] = {
+                        'success': True,
+                        'skipped': True,
+                        'reason': f'{q_type} 类型题目由专用 Agent 评分，无需关键点预分析',
+                        'keypoints': [],
+                    }
+                    continue
 
-            if not standard_answer:
-                results[q_id] = {
-                    'success': False,
-                    'error': '缺少标准答案',
-                    'keypoints': [],
-                }
-                continue
+                if not standard_answer:
+                    results[q_id] = {
+                        'success': False,
+                        'error': '缺少标准答案',
+                        'keypoints': [],
+                    }
+                    continue
 
-            try:
-                result = await analyzer.analyze_standard_answer(
-                    question=content,
-                    standard_answer=standard_answer,
-                )
-                results[q_id] = result
-                logger.info(
-                    f"题目 {q_id} 分析完成: "
-                    f"关键点 {len(result.get('keypoints', []))} 个"
-                )
-            except Exception as e:
-                logger.error(f"题目 {q_id} 分析异常: {str(e)}")
-                results[q_id] = {
-                    'success': False,
-                    'error': str(e),
-                    'keypoints': [],
-                }
+                try:
+                    result = await analyzer.analyze_standard_answer(
+                        question=content,
+                        standard_answer=standard_answer,
+                    )
+                    results[q_id] = result
+                    logger.info(
+                        f"题目 {q_id} 分析完成: "
+                        f"关键点 {len(result.get('keypoints', []))} 个"
+                    )
+                except Exception as e:
+                    logger.error(f"题目 {q_id} 分析异常: {str(e)}")
+                    results[q_id] = {
+                        'success': False,
+                        'error': str(e),
+                        'keypoints': [],
+                    }
+        finally:
+            await analyzer.aclose()
 
         return results
 
@@ -319,26 +322,29 @@ class GradingService:
         coordinator = CoordinatorAgent()
         results = []
 
-        for submission in submissions:
-            try:
-                result = await coordinator.grade_submission(submission.id)
-                results.append({
-                    "submission_id": submission.id,
-                    "student_id": submission.student_id,
-                    "status": result.get("status", "error"),
-                    "total_score": result.get("total_score", 0),
-                    "overall_comment": result.get("overall_comment", ""),
-                })
-            except Exception as e:
-                logger.error(
-                    f"判题失败: 提交ID={submission.id}, 错误={str(e)}"
-                )
-                results.append({
-                    "submission_id": submission.id,
-                    "student_id": submission.student_id,
-                    "status": "error",
-                    "error_message": str(e),
-                })
+        try:
+            for submission in submissions:
+                try:
+                    result = await coordinator.grade_submission(submission.id)
+                    results.append({
+                        "submission_id": submission.id,
+                        "student_id": submission.student_id,
+                        "status": result.get("status", "error"),
+                        "total_score": result.get("total_score", 0),
+                        "overall_comment": result.get("overall_comment", ""),
+                    })
+                except Exception as e:
+                    logger.error(
+                        f"判题失败: 提交ID={submission.id}, 错误={str(e)}"
+                    )
+                    results.append({
+                        "submission_id": submission.id,
+                        "student_id": submission.student_id,
+                        "status": "error",
+                        "error_message": str(e),
+                    })
+        finally:
+            await coordinator.aclose()
 
         return results
 

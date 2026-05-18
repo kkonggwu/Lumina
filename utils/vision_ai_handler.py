@@ -34,6 +34,13 @@ class VisionAIHandler:
         )
         self.model = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")
 
+    async def aclose(self):
+        close = getattr(self.client, "aclose", None) or getattr(self.client, "close", None)
+        if close:
+            result = close()
+            if hasattr(result, "__await__"):
+                await result
+
     async def analyze_report_images(self, images: List[Dict], max_images: int = 12) -> Dict:
         findings = []
         for image in images[:max_images]:
